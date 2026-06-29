@@ -231,11 +231,11 @@ html, body {
 .dropdown-item:hover { background: var(--bg-toolbar); }
 
 /* Workspace */
-.workspace-screen { height: 100vh; overflow: hidden; }
+.workspace-screen { height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
 .workspace {
   display: grid;
   grid-template-columns: 1fr 6px 1fr;
-  height: calc(100vh - 56px);
+  flex: 1;
   min-height: 0;
   overflow: hidden;
 }
@@ -246,6 +246,7 @@ html, body {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
+  height: 100%;
 }
 
 .pdf-panel {
@@ -284,10 +285,8 @@ html, body {
   background: #fff;
   box-shadow: 0 2px 10px rgba(0,0,0,0.08);
   border-radius: 2px;
-  width: auto;
-  height: auto;
   max-width: 100%;
-  max-height: 100%;
+  max-height: 50%;
   flex: 1 1 50%;
   min-height: 0;
   object-fit: contain;

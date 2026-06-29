@@ -305,7 +305,6 @@
     const baseVp = page.getViewport({ scale: 1 });
     const containerH = container.clientHeight || container.getBoundingClientRect().height;
     const containerW = container.clientWidth || container.getBoundingClientRect().width;
-    // Altura disponível para cada uma das duas páginas + zoom multiplicador
     const pageH = (containerH - 32) / 2;
     const pageW = containerW - 32;
     const scaleByHeight = pageH / baseVp.height;
@@ -313,17 +312,18 @@
     // fit-to-container (contain) sem cortar, depois aplica o zoom do usuário
     let fitScale = Math.min(scaleByHeight, scaleByWidth);
     let scale = fitScale * zoom;
-    if (scale < 0.05) scale = 0.05;
+    // Impede que o PDF fique microscópico quando o container ainda não tem altura
+    if (scale < 0.25) scale = 0.25;
     const viewport = page.getViewport({ scale });
 
     let crop = { cropTop: 0, cropBottom: 0, cropLeft: 0, cropRight: 0 };
     try { crop = await detectCrop(page, scale); } catch (e) { /* ignore crop errors */ }
 
-    const croppedW = Math.max(1, viewport.width - crop.cropLeft - crop.cropRight);
-    const croppedH = Math.max(1, viewport.height - crop.cropTop - crop.cropBottom);
-
-    canvas.width = Math.floor(croppedW);
-    canvas.height = Math.floor(croppedH);
+    canvas.width = Math.max(1, Math.floor(viewport.width - crop.cropLeft - crop.cropRight));
+    canvas.height = Math.max(1, Math.floor(viewport.height - crop.cropTop - crop.cropBottom));
+    // Limpa estilos inline anteriores para deixar o CSS controlar tamanho visual
+    canvas.style.width = '';
+    canvas.style.height = '';
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -764,6 +764,17 @@
     resizeDrawingOverlay();
     if (pdfDocument) renderPages();
   });
+
+  // Re-renderiza PDF quando o container ganhar dimensões reais
+  // (evita páginas microscópicas no primeiro carregamento)
+  if (pdfContainer) {
+    const resizeObserver = new ResizeObserver(entries => {
+      if (pdfDocument && entries[0].contentRect.width > 0 && entries[0].contentRect.height > 0) {
+        renderPages();
+      }
+    });
+    resizeObserver.observe(pdfContainer);
+  }
 
   console.log('[PDFNotes] App pronto');
   } catch (err) {

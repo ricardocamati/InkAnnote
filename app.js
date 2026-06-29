@@ -313,7 +313,7 @@
     let fitScale = Math.min(scaleByHeight, scaleByWidth);
     let scale = fitScale * zoom;
     // Impede que o PDF fique microscópico quando o container ainda não tem altura
-    if (scale < 0.25) scale = 0.25;
+    if (scale < 0.50) scale = 0.50;
     const viewport = page.getViewport({ scale });
 
     let crop = { cropTop: 0, cropBottom: 0, cropLeft: 0, cropRight: 0 };
@@ -327,9 +327,9 @@
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Preenche fundo com branco (evita transparência em páginas escaneadas)
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    // Não preenche fundo com branco: páginas com fundo escuro geram linhas
+    // brancas ao redor do conteúdo quando o crop remove margens. O próprio
+    // PDF renderiza seu fundo.
 
     ctx.save();
     ctx.translate(-crop.cropLeft, -crop.cropTop);

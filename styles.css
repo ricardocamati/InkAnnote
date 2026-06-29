@@ -17,6 +17,7 @@
   --shadow: 0 4px 18px rgba(0,0,0,0.06);
   --font-ui: 'Inter', system-ui, sans-serif;
   --font-editor: 'Lora', Georgia, 'Times New Roman', serif;
+  color-scheme: light;
 }
 
 [data-theme="dark"] {
@@ -33,6 +34,7 @@
   --divider: #3A3A3A;
   --linked-indicator: #3DBDB044;
   --paper-lines: #2E2E28;
+  color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
@@ -233,7 +235,7 @@ html, body {
 .workspace {
   display: grid;
   grid-template-columns: 1fr 6px 1fr;
-  flex: 1;
+  height: calc(100vh - 56px);
   min-height: 0;
   overflow: hidden;
 }
@@ -269,9 +271,9 @@ html, body {
 .pdf-container {
   flex: 1;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
-  justify-content: flex-start;
+  justify-content: center;
   gap: 16px;
   padding: 16px;
   position: relative;
@@ -282,9 +284,12 @@ html, body {
   background: #fff;
   box-shadow: 0 2px 10px rgba(0,0,0,0.08);
   border-radius: 2px;
-  max-width: 100%;
-  max-height: calc(50% - 8px);
-  flex-shrink: 0;
+  max-width: 50%;
+  max-height: 100%;
+  flex: 1 1 0;
+  height: auto;
+  width: auto;
+  object-fit: contain;
 }
 
 .drawing-overlay {
@@ -387,6 +392,7 @@ html, body {
   cursor: pointer;
   position: relative;
   transition: border-color 0.15s, background 0.15s;
+  min-height: 40px;
 }
 .page-header:hover { border-color: var(--accent); }
 
@@ -402,6 +408,7 @@ html, body {
   opacity: 0;
   transform: translateX(-4px);
   transition: opacity 150ms ease, transform 150ms ease;
+  white-space: nowrap;
 }
 .page-header:hover .edit-hint {
   opacity: 1;
@@ -414,6 +421,7 @@ html, body {
   gap: 8px;
   flex: 1;
 }
+.page-link-edit.hidden { display: none; }
 .page-link-edit input {
   flex: 1;
   padding: 4px 8px;
@@ -424,7 +432,7 @@ html, body {
   background: var(--bg-editor);
   color: var(--text-primary);
 }
-.confirm-hint { font-size: 11px; color: var(--text-muted); }
+.confirm-hint { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
 
 .editor-wrapper {
   flex: 1;
@@ -441,6 +449,7 @@ html, body {
 .note-editor {
   flex: 1;
   width: 100%;
+  min-height: 0;
   resize: none;
   border: none;
   padding: 20px 24px;

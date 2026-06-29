@@ -158,14 +158,12 @@
   }
 
   function focusEditor() {
-    if (!previewMode && !pageLinkEdit.classList.contains('hidden')) return;
-    setTimeout(() => {
-      if (previewMode) {
-        previewToggle.focus();
-      } else {
-        noteEditor.focus();
-      }
-    }, 50);
+    if (previewMode) {
+      setTimeout(() => previewToggle.focus(), 50);
+      return;
+    }
+    if (currentNoteIndex < 0) return;
+    setTimeout(() => noteEditor.focus(), 50);
   }
 
   // Tema
@@ -183,7 +181,7 @@
 
   const savedTheme = localStorage.getItem(THEME_KEY);
   if (savedTheme === 'dark' || savedTheme === 'light') setTheme(savedTheme);
-  else setTheme('dark');
+  else setTheme('light');
   themeToggle.addEventListener('click', toggleTheme);
 
   // Persistência
@@ -350,24 +348,29 @@
     const maxW = (container.clientWidth - 48) / 2;
     const maxH = container.clientHeight - 32;
     const baseVp = page.getViewport({ scale: 1 });
-    const scale = Math.min(maxW / baseVp.width, maxH / baseVp.height, zoom);
+    let scale = Math.min(maxW / baseVp.width, maxH / baseVp.height) * zoom;
+    if (scale < 0.05) scale = 0.05;
     const viewport = page.getViewport({ scale });
 
     let crop = { cropTop: 0, cropBottom: 0, cropLeft: 0, cropRight: 0 };
     try { crop = await detectCrop(page, scale); } catch (e) { /* ignore crop errors */ }
 
-    const croppedW = viewport.width - crop.cropLeft - crop.cropRight;
-    const croppedH = viewport.height - crop.cropTop - crop.cropBottom;
+    const croppedW = Math.max(1, viewport.width - crop.cropLeft - crop.cropRight);
+    const croppedH = Math.max(1, viewport.height - crop.cropTop - crop.cropBottom);
 
-    canvas.width = Math.max(1, Math.floor(croppedW));
-    canvas.height = Math.max(1, Math.floor(croppedH));
+    canvas.width = Math.floor(croppedW);
+    canvas.height = Math.floor(croppedH);
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    if (crop.cropLeft || crop.cropTop) {
-      ctx.translate(-crop.cropLeft, -crop.cropTop);
-    }
+    // Preenche fundo com branco (evita transparência em páginas escaneadas)
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.save();
+    ctx.translate(-crop.cropLeft, -crop.cropTop);
     await page.render({ canvasContext: ctx, viewport }).promise;
+    ctx.restore();
   }
 
   async function renderPages() {
@@ -388,14 +391,17 @@
     const newStart = currentPageStart + delta * 2;
     if (newStart < 1 || newStart > totalPages) return;
     currentPageStart = newStart;
-    renderPages();
-    const idx = notebookPages.findIndex(p =>
-      (p.linkedPdfPages || []).some(n => n === currentPageStart || n === currentPageStart + 1)
-    );
-    if (idx >= 0 && idx !== currentNoteIndex) {
-      setNoteIndex(idx, false);
-    }
-    saveSession();
+    renderPages().then(() => {
+      const idx = notebookPages.findIndex(p =>
+        (p.linkedPdfPages || []).some(n => n === currentPageStart || n === currentPageStart + 1)
+      );
+      if (idx >= 0 && idx !== currentNoteIndex) {
+        setNoteIndex(idx, true);
+      } else {
+        focusEditor();
+      }
+      saveSession();
+    });
   }
 
   pdfPrev.addEventListener('click', () => changePage(-1));

@@ -1,86 +1,113 @@
 (() => {
   'use strict';
 
-  try {
-    console.log('[PDFNotes] Iniciando app...');
-
-    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
-
-    // DOM refs
-    const uploadScreen = document.getElementById('uploadScreen');
-    const workspaceScreen = document.getElementById('workspaceScreen');
-    const dropZone = document.getElementById('dropZone');
-    const openFileBtn = document.getElementById('openFileBtn');
-    const pdfInput = document.getElementById('pdfInput');
-    const uploadError = document.getElementById('uploadError');
-    const newFileBtn = document.getElementById('newFileBtn');
-    const fileNameEl = document.getElementById('fileName');
-    const pdfLoading = document.getElementById('pdfLoading');
-    const pdfContainer = document.getElementById('pdfContainer');
-    const pdfCanvasLeft = document.getElementById('pdfCanvasLeft');
-    const pdfCanvasRight = document.getElementById('pdfCanvasRight');
-    const drawingOverlay = document.getElementById('drawingOverlay');
-    const pdfPrev = document.getElementById('pdfPrev');
-    const pdfNext = document.getElementById('pdfNext');
-    const pdfPagesLabel = document.getElementById('pdfPagesLabel');
-    const pdfTotalPages = document.getElementById('pdfTotalPages');
-    const linkedIndicator = document.getElementById('linkedIndicator');
-    const notebookEmpty = document.getElementById('notebookEmpty');
-    const notebookPage = document.getElementById('notebookPage');
-    const pageHeader = document.getElementById('pageHeader');
-    const pageLinkLabel = document.getElementById('pageLinkLabel');
-    const pageLinkEdit = document.getElementById('pageLinkEdit');
-    const pageLinkInput = document.getElementById('pageLinkInput');
-    const noteEditor = document.getElementById('noteEditor');
-    const notePreview = document.getElementById('notePreview');
-    const previewToggle = document.getElementById('previewToggle');
-    const wordCount = document.getElementById('wordCount');
-    const saveStatus = document.getElementById('saveStatus');
-  const notePrev = document.getElementById('notePrev');
-  const noteNext = document.getElementById('noteNext');
-  const noteIndex = document.getElementById('noteIndex');
-  const noteTotal = document.getElementById('noteTotal');
-  const newNotePage = document.getElementById('newNotePage');
-  const createFirstPage = document.getElementById('createFirstPage');
-  const zoomSelect = document.getElementById('zoomSelect');
-  const zoomIn = document.getElementById('zoomIn');
-  const zoomOut = document.getElementById('zoomOut');
-  const toolBtns = document.querySelectorAll('.tool-btn');
-  const colorPicker = document.getElementById('colorPicker');
-  const exportBtn = document.getElementById('exportBtn');
-  const exportMenu = document.getElementById('exportMenu');
-  const exportMarkdown = document.getElementById('exportMarkdown');
-  const exportJSON = document.getElementById('exportJSON');
-  const themeToggle = document.getElementById('themeToggle');
-  const themeIconMoon = document.getElementById('themeIconMoon');
-  const themeIconSun = document.getElementById('themeIconSun');
-  const workspace = document.getElementById('workspace');
-  const resizer = document.getElementById('resizer');
-  const restoreBanner = document.getElementById('restoreBanner');
-  const restoreYes = document.getElementById('restoreYes');
-  const restoreNo = document.getElementById('restoreNo');
-
-  // Estado
-  let pdfDocument = null;
-  let pdfFile = null;
-  let currentPageStart = 1;
-  let zoom = 1;
-  let totalPages = 0;
-  let notebookPages = [];
-  let currentNoteIndex = -1;
-  let activeTool = 'select';
-  let toolColor = '#FFD700';
-  let isDrawing = false;
-  let lastPoint = null;
-  let saveTimeout = null;
-  let previewMode = false;
-  let cropCache = new Map();
+  // ============================================================
+  // Constantes / Magic numbers
+  // ============================================================
+  const DEBOUNCE_RENDER_MS = 200;
+  const SAVE_TIMEOUT_MS = 400;
+  const NOTE_TRANSITION_MS = 150;
+  const OVERLAY_ERASER_WIDTH = 16;
+  const OVERLAY_HIGHLIGHT_WIDTH = 18;
+  const OVERLAY_PEN_WIDTH = 3;
+  const OVERLAY_HIGHLIGHT_ALPHA = '88';
+  const MIN_PANEL_PX = 320;
+  const RESIZER_WIDTH_PCT = 0.6;
+  const PDF_PADDING_PX = 32;
+  const MAX_DPR = 3;
+  const RENDER_QUALITY = 1.5;
 
   const STORAGE_KEY = 'pdfnotes_session';
   const THEME_KEY = 'pdfnotes_theme';
   const SPLIT_KEY = 'pdfnotes_split';
 
+  const TOOLS = {
+    SELECT: 'select',
+    HIGHLIGHT: 'highlight',
+    PEN: 'pen',
+    ERASER: 'eraser',
+  };
+
+  // ============================================================
+  // Estado
+  // ============================================================
+  let pdfDocument = null;
+  let pdfFile = null;
+  let currentPageStart = 1;
+  let totalPages = 0;
+  let notebookPages = [];
+  let currentNoteIndex = -1;
+  let activeTool = TOOLS.SELECT;
+  let toolColor = '#FFD700';
+  let isDrawing = false;
+  let lastPoint = null;
+  let saveTimeout = null;
+  let renderTimeout = null;
+  let previewMode = false;
+  let renderToken = 0;
+  let lastRenderedPair = null;
+
+  // ============================================================
+  // DOM refs
+  // ============================================================
+  const $ = id => document.getElementById(id);
+
+  const uploadScreen = $('uploadScreen');
+  const workspaceScreen = $('workspaceScreen');
+  const dropZone = $('dropZone');
+  const openFileBtn = $('openFileBtn');
+  const pdfInput = $('pdfInput');
+  const uploadError = $('uploadError');
+  const newFileBtn = $('newFileBtn');
+  const fileNameEl = $('fileName');
+  const pdfLoading = $('pdfLoading');
+  const pdfContainer = $('pdfContainer');
+  const pdfPagesWrapper = $('pdfPagesWrapper');
+  const pdfCanvasLeft = $('pdfCanvasLeft');
+  const pdfCanvasRight = $('pdfCanvasRight');
+  const drawingOverlay = $('drawingOverlay');
+  const pdfPrev = $('pdfPrev');
+  const pdfNext = $('pdfNext');
+  const pdfPagesLabel = $('pdfPagesLabel');
+  const pdfTotalPages = $('pdfTotalPages');
+  const linkedIndicator = $('linkedIndicator');
+  const notebookEmpty = $('notebookEmpty');
+  const notebookPage = $('notebookPage');
+  const pageHeader = $('pageHeader');
+  const pageLinkLabel = $('pageLinkLabel');
+  const pageLinkEdit = $('pageLinkEdit');
+  const pageLinkInput = $('pageLinkInput');
+  const noteEditor = $('noteEditor');
+  const notePreview = $('notePreview');
+  const previewToggle = $('previewToggle');
+  const wordCount = $('wordCount');
+  const saveStatus = $('saveStatus');
+  const notePrev = $('notePrev');
+  const noteNext = $('noteNext');
+  const noteIndex = $('noteIndex');
+  const noteTotal = $('noteTotal');
+  const newNotePage = $('newNotePage');
+  const createFirstPage = $('createFirstPage');
+  const toolBtns = document.querySelectorAll('.tool-btn');
+  const colorPicker = $('colorPicker');
+  const exportBtn = $('exportBtn');
+  const exportMenu = $('exportMenu');
+  const exportMarkdown = $('exportMarkdown');
+  const exportJSON = $('exportJSON');
+  const themeToggle = $('themeToggle');
+  const themeIconMoon = $('themeIconMoon');
+  const themeIconSun = $('themeIconSun');
+  const workspace = $('workspace');
+  const resizer = $('resizer');
+  const restoreBanner = $('restoreBanner');
+  const restoreYes = $('restoreYes');
+  const restoreNo = $('restoreNo');
+
+  const overlayCtx = drawingOverlay.getContext('2d');
+
+  // ============================================================
   // Helpers
+  // ============================================================
   function uuid() {
     return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
       const r = Math.random() * 16 | 0;
@@ -111,10 +138,6 @@
 
   function hasLinkedPage(pageNum) {
     return notebookPages.some(p => (p.linkedPdfPages || []).includes(pageNum));
-  }
-
-  function getLinkedNoteIndex(pageNum) {
-    return notebookPages.findIndex(p => (p.linkedPdfPages || []).includes(pageNum));
   }
 
   function parsePageLink(value) {
@@ -166,7 +189,25 @@
     setTimeout(() => noteEditor.focus(), 50);
   }
 
+  function pairKey(start) {
+    return `${start},${start + 1}`;
+  }
+
+  function minOf(arr) {
+    return arr.reduce((a, b) => (b < a ? b : a), arr[0]);
+  }
+
+  function debounce(fn, ms) {
+    let t = null;
+    return (...args) => {
+      clearTimeout(t);
+      t = setTimeout(() => fn(...args), ms);
+    };
+  }
+
+  // ============================================================
   // Tema
+  // ============================================================
   function setTheme(theme) {
     document.documentElement.setAttribute('data-theme', theme);
     localStorage.setItem(THEME_KEY, theme);
@@ -180,11 +221,12 @@
   }
 
   const savedTheme = localStorage.getItem(THEME_KEY);
-  if (savedTheme === 'dark' || savedTheme === 'light') setTheme(savedTheme);
-  else setTheme('light');
+  setTheme(savedTheme === 'dark' || savedTheme === 'light' ? savedTheme : 'light');
   themeToggle.addEventListener('click', toggleTheme);
 
+  // ============================================================
   // Persistência
+  // ============================================================
   function saveSession() {
     const session = {
       fileName: pdfFile ? pdfFile.name : null,
@@ -192,7 +234,6 @@
       lastNotebookIndex: currentNoteIndex,
       savedAt: new Date().toISOString(),
       notebookPages,
-      zoom,
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
     setSaveStatus(`Salvo às ${formatDate()}`);
@@ -208,7 +249,7 @@
       }
       saveSession();
       updateWordCount();
-    }, 400);
+    }, SAVE_TIMEOUT_MS);
   }
 
   function loadSession() {
@@ -223,14 +264,18 @@
     localStorage.removeItem(STORAGE_KEY);
   }
 
+  // ============================================================
   // Upload
+  // ============================================================
   function handleFile(file) {
-    if (!file || file.type !== 'application/pdf') {
-      const name = file ? file.name.toLowerCase() : '';
-      if (!name.endsWith('.pdf')) {
-        showError('Por favor, envie um arquivo PDF válido.');
-        return;
-      }
+    if (!file) {
+      showError('Por favor, envie um arquivo PDF válido.');
+      return;
+    }
+    const name = file.name ? file.name.toLowerCase() : '';
+    if (file.type !== 'application/pdf' && !name.endsWith('.pdf')) {
+      showError('Por favor, envie um arquivo PDF válido.');
+      return;
     }
     uploadError.classList.add('hidden');
     pdfFile = file;
@@ -258,15 +303,9 @@
   });
   newFileBtn.addEventListener('click', () => pdfInput.click());
 
-  // Crop automático de margens — DESLIGADO por padrão. Em PDFs com fundos
-  // escuros e divisórias claras (como o DNA-test.pdf), o algoritmo confunde
-  // elementos internos com margens e corta a página. Para reativar no futuro,
-  // substituir por análise mais robusta (limiar adaptativo por canal).
-  async function detectCrop(page, scale) {
-    return { cropTop: 0, cropBottom: 0, cropLeft: 0, cropRight: 0 };
-  }
-
-  // PDF
+  // ============================================================
+  // PDF — renderização
+  // ============================================================
   async function openPdf(file) {
     uploadScreen.classList.add('hidden');
     workspaceScreen.classList.remove('hidden');
@@ -279,13 +318,13 @@
       totalPages = pdfDocument.numPages;
       pdfTotalPages.textContent = totalPages;
       currentPageStart = 1;
-      cropCache.clear();
+      lastRenderedPair = null;
       await renderPages();
       pdfLoading.classList.add('hidden');
       pdfContainer.classList.remove('hidden');
       maybeCreateDefaultPage();
     } catch (err) {
-      console.error(err);
+      console.error('[PDFNotes] Falha ao carregar PDF:', err);
       uploadScreen.classList.remove('hidden');
       workspaceScreen.classList.add('hidden');
       showError('Não foi possível carregar o PDF.');
@@ -296,59 +335,68 @@
     if (pageNum > totalPages || pageNum < 1) {
       canvas.width = 0;
       canvas.height = 0;
+      canvas.style.width = '0px';
+      canvas.style.height = '0px';
       return;
     }
-    const page = await pdfDocument.getPage(pageNum);
-    const container = pdfContainer;
+    const containerH = pdfContainer.clientHeight;
+    const containerW = pdfContainer.clientWidth;
+    if (!containerH || !containerW) return; // container ainda não layoutado
 
-    // Calcula scale dinâmico para caber duas páginas empilhadas no container
+    const page = await pdfDocument.getPage(pageNum);
     const baseVp = page.getViewport({ scale: 1 });
-    const containerH = container.clientHeight || container.getBoundingClientRect().height;
-    const containerW = container.clientWidth || container.getBoundingClientRect().width;
-    const pageH = (containerH - 32) / 2;
-    const pageW = containerW - 32;
+    const pageH = (containerH - PDF_PADDING_PX) / 2;
+    const pageW = containerW - PDF_PADDING_PX;
     const scaleByHeight = pageH / baseVp.height;
     const scaleByWidth = pageW / baseVp.width;
-    // fit-to-container (contain) sem cortar, depois aplica o zoom do usuário
-    let fitScale = Math.min(scaleByHeight, scaleByWidth);
-    let scale = fitScale * zoom;
-    // Impede que o PDF fique microscópico quando o container ainda não tem altura
-    if (scale < 1.50) scale = 1.50;
-    const viewport = page.getViewport({ scale });
+    const cssScale = Math.min(scaleByHeight, scaleByWidth);
 
-    let crop = { cropTop: 0, cropBottom: 0, cropLeft: 0, cropRight: 0 };
-    try { crop = await detectCrop(page, scale); } catch (e) { /* ignore crop errors */ }
+    const dpr = Math.min(window.devicePixelRatio || 1, MAX_DPR);
+    const renderScale = cssScale * dpr * RENDER_QUALITY;
+    const viewport = page.getViewport({ scale: renderScale });
 
-    canvas.width = Math.max(1, Math.floor(viewport.width - crop.cropLeft - crop.cropRight));
-    canvas.height = Math.max(1, Math.floor(viewport.height - crop.cropTop - crop.cropBottom));
-    // Limpa estilos inline anteriores para deixar o CSS controlar tamanho visual
-    canvas.style.width = '';
-    canvas.style.height = '';
+    const backingW = Math.max(1, Math.floor(viewport.width));
+    const backingH = Math.max(1, Math.floor(viewport.height));
+    canvas.width = backingW;
+    canvas.height = backingH;
+    canvas.style.width = Math.floor(backingW / (dpr * RENDER_QUALITY)) + 'px';
+    canvas.style.height = Math.floor(backingH / (dpr * RENDER_QUALITY)) + 'px';
     const ctx = canvas.getContext('2d');
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.clearRect(0, 0, backingW, backingH);
 
-    // Não preenche fundo com branco: páginas com fundo escuro geram linhas
-    // brancas ao redor do conteúdo quando o crop remove margens. O próprio
-    // PDF renderiza seu fundo.
-
-    ctx.save();
-    ctx.translate(-crop.cropLeft, -crop.cropTop);
     await page.render({ canvasContext: ctx, viewport }).promise;
-    ctx.restore();
   }
 
   async function renderPages() {
+    if (!pdfDocument) return;
+    const token = ++renderToken;
     const left = currentPageStart;
     const right = currentPageStart + 1;
+
     await Promise.all([
       renderPage(pdfCanvasLeft, left),
-      renderPage(pdfCanvasRight, right)
+      renderPage(pdfCanvasRight, right),
     ]);
+    if (token !== renderToken) return; // render mais novo em andamento
+
     pdfPagesLabel.textContent = right <= totalPages ? `${left}, ${right}` : `${left}`;
     const linked = [left, right].filter(p => p <= totalPages).some(hasLinkedPage);
     linkedIndicator.classList.toggle('visible', linked);
+
     resizeDrawingOverlay();
-    clearOverlay();
+    restoreOverlayForCurrentPair();
+
+    lastRenderedPair = pairKey(currentPageStart);
+    updatePageNavButtons();
+  }
+
+  function updatePageNavButtons() {
+    const atStart = currentPageStart <= 1;
+    const atEnd = currentPageStart + 1 >= totalPages;
+    pdfPrev.disabled = atStart;
+    pdfNext.disabled = atEnd;
+    pdfPrev.classList.toggle('disabled', atStart);
+    pdfNext.classList.toggle('disabled', atEnd);
   }
 
   function changePage(delta) {
@@ -368,33 +416,17 @@
     });
   }
 
-  pdfPrev.addEventListener('click', () => changePage(-1));
-  pdfNext.addEventListener('click', () => changePage(1));
+  pdfPrev.addEventListener('click', () => { if (!pdfPrev.disabled) changePage(-1); });
+  pdfNext.addEventListener('click', () => { if (!pdfNext.disabled) changePage(1); });
 
-  // Zoom
-  function setZoom(value) {
-    zoom = parseFloat(value);
-    zoomSelect.value = zoom;
-    renderPages();
-  }
-  zoomSelect.addEventListener('change', e => setZoom(e.target.value));
-  zoomIn.addEventListener('click', () => {
-    const options = Array.from(zoomSelect.options).map(o => parseFloat(o.value));
-    const next = options.find(v => v > zoom);
-    if (next) setZoom(next);
-  });
-  zoomOut.addEventListener('click', () => {
-    const options = Array.from(zoomSelect.options).map(o => parseFloat(o.value)).sort((a, b) => b - a);
-    const prev = options.find(v => v < zoom);
-    if (prev) setZoom(prev);
-  });
-
+  // ============================================================
   // Caderno
+  // ============================================================
   function setNoteIndex(idx, focus = true) {
     const target = normalizeNoteIndex(idx);
     if (target === currentNoteIndex) {
       if (focus) focusEditor();
-      return;
+      return target;
     }
     notebookPage.classList.add('transitioning');
     setTimeout(() => {
@@ -402,7 +434,8 @@
       renderNotebook();
       notebookPage.classList.remove('transitioning');
       if (focus) focusEditor();
-    }, 150);
+    }, NOTE_TRANSITION_MS);
+    return target;
   }
 
   function renderNotebook() {
@@ -422,7 +455,7 @@
     noteTotal.textContent = notebookPages.length;
     updateWordCount();
     if (previewMode) updatePreview();
-    setPreviewMode(previewMode); // inicia preview ao vivo conforme estado
+    setPreviewMode(previewMode);
     setSaveStatus(`Salvo às ${formatDate()}`);
   }
 
@@ -434,6 +467,7 @@
       id: uuid(),
       linkedPdfPages: linkedPages,
       content: '',
+      drawings: {},
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -445,16 +479,15 @@
   newNotePage.addEventListener('click', () => createNotePage());
   createFirstPage.addEventListener('click', () => createNotePage());
 
-  notePrev.addEventListener('click', () => {
-    setNoteIndex(currentNoteIndex - 1);
-    const pages = notebookPages[currentNoteIndex]?.linkedPdfPages;
-    if (pages && pages.length) goToPdfPage(Math.min(...pages));
-  });
-  noteNext.addEventListener('click', () => {
-    setNoteIndex(currentNoteIndex + 1);
-    const pages = notebookPages[currentNoteIndex]?.linkedPdfPages;
-    if (pages && pages.length) goToPdfPage(Math.min(...pages));
-  });
+  function goToLinkedPage(targetIdx) {
+    const resolved = normalizeNoteIndex(targetIdx);
+    const pages = notebookPages[resolved]?.linkedPdfPages;
+    setNoteIndex(resolved);
+    if (pages && pages.length) goToPdfPage(minOf(pages));
+  }
+
+  notePrev.addEventListener('click', () => goToLinkedPage(currentNoteIndex - 1));
+  noteNext.addEventListener('click', () => goToLinkedPage(currentNoteIndex + 1));
 
   function maybeCreateDefaultPage() {
     if (notebookPages.length === 0) {
@@ -464,8 +497,6 @@
     }
   }
 
-  noteEditor.addEventListener('input', scheduleSave);
-
   function goToPdfPage(pageNum) {
     if (pageNum >= 1 && pageNum <= totalPages) {
       currentPageStart = pageNum % 2 === 0 ? pageNum - 1 : pageNum;
@@ -474,7 +505,9 @@
     }
   }
 
+  // ============================================================
   // Edição do vínculo inline
+  // ============================================================
   function startEditLink() {
     if (currentNoteIndex < 0) return;
     pageLinkEdit.classList.remove('hidden');
@@ -503,7 +536,7 @@
     focusEditor();
   }
 
-  pageHeader.addEventListener('click', e => {
+  pageHeader.addEventListener('click', () => {
     if (!pageLinkEdit.classList.contains('hidden')) return;
     startEditLink();
   });
@@ -513,7 +546,9 @@
   });
   pageLinkInput.addEventListener('blur', () => saveLink());
 
-  // Preview Markdown ao vivo — renderiza automaticamente abaixo do editor
+  // ============================================================
+  // Preview Markdown
+  // ============================================================
   function updatePreview() {
     notePreview.innerHTML = marked.parse(noteEditor.value || '');
   }
@@ -523,11 +558,7 @@
     previewToggle.setAttribute('aria-pressed', previewMode);
     previewToggle.classList.toggle('active', previewMode);
     notePreview.className = 'note-preview ' + (previewMode ? 'visible' : 'live');
-    if (previewMode) {
-      noteEditor.classList.add('hidden');
-    } else {
-      noteEditor.classList.remove('hidden');
-    }
+    noteEditor.classList.toggle('hidden', previewMode);
     updatePreview();
   }
 
@@ -537,26 +568,43 @@
   }
 
   previewToggle.addEventListener('click', togglePreview);
+
+  // Único handler de input do editor — salva + atualiza preview
   noteEditor.addEventListener('input', () => {
     scheduleSave();
     updatePreview();
   });
 
+  // ============================================================
   // Toolbar ferramentas
+  // ============================================================
+  function updateToolButtons() {
+    toolBtns.forEach(b => b.classList.toggle('active', b.dataset.tool === activeTool));
+    drawingOverlay.style.pointerEvents = activeTool === TOOLS.SELECT ? 'none' : 'auto';
+    updateOverlayCursor();
+  }
+
+  function updateOverlayCursor() {
+    const cursorMap = {
+      [TOOLS.SELECT]: 'default',
+      [TOOLS.PEN]: 'crosshair',
+      [TOOLS.HIGHLIGHT]: 'crosshair',
+      [TOOLS.ERASER]: 'cell',
+    };
+    drawingOverlay.style.cursor = cursorMap[activeTool] || 'default';
+  }
+
   toolBtns.forEach(btn => {
     btn.addEventListener('click', () => {
       activeTool = btn.dataset.tool;
       updateToolButtons();
     });
   });
-  colorPicker.addEventListener('input', e => toolColor = e.target.value);
+  colorPicker.addEventListener('input', e => { toolColor = e.target.value; });
 
-  function updateToolButtons() {
-    toolBtns.forEach(b => b.classList.toggle('active', b.dataset.tool === activeTool));
-    drawingOverlay.style.pointerEvents = activeTool === 'select' ? 'none' : 'auto';
-  }
-
-  // Desenho sobre o PDF
+  // ============================================================
+  // Desenho sobre o PDF (com persistência por par de páginas)
+  // ============================================================
   function getOverlayPoint(e) {
     const rect = drawingOverlay.getBoundingClientRect();
     const scaleX = drawingOverlay.width / rect.width;
@@ -568,36 +616,66 @@
   }
 
   function resizeDrawingOverlay() {
-    drawingOverlay.width = pdfContainer.clientWidth;
-    drawingOverlay.height = pdfContainer.clientHeight;
+    drawingOverlay.width = pdfPagesWrapper.clientWidth;
+    drawingOverlay.height = pdfPagesWrapper.clientHeight;
   }
 
   function clearOverlay() {
-    const ctx = drawingOverlay.getContext('2d');
-    ctx.clearRect(0, 0, drawingOverlay.width, drawingOverlay.height);
+    overlayCtx.clearRect(0, 0, drawingOverlay.width, drawingOverlay.height);
   }
 
-  const overlayCtx = drawingOverlay.getContext('2d');
+  function getCurrentPage() {
+    return currentNoteIndex >= 0 ? notebookPages[currentNoteIndex] : null;
+  }
+
+  function saveOverlayForCurrentPair() {
+    const page = getCurrentPage();
+    if (!page) return;
+    if (!drawingOverlay.width || !drawingOverlay.height) return;
+    if (activeTool === TOOLS.SELECT) return;
+    const dataURL = drawingOverlay.toDataURL();
+    if (!page.drawings) page.drawings = {};
+    page.drawings[pairKey(currentPageStart)] = dataURL;
+    page.updatedAt = new Date().toISOString();
+    scheduleSave();
+  }
+
+  function restoreOverlayForCurrentPair() {
+    clearOverlay();
+    const page = getCurrentPage();
+    if (!page || !page.drawings) return;
+    const dataURL = page.drawings[pairKey(currentPageStart)];
+    if (!dataURL) return;
+    const img = new Image();
+    img.onload = () => {
+      overlayCtx.drawImage(img, 0, 0, drawingOverlay.width, drawingOverlay.height);
+    };
+    img.src = dataURL;
+  }
 
   drawingOverlay.addEventListener('pointerdown', e => {
-    if (activeTool === 'select') return;
+    if (activeTool === TOOLS.SELECT) return;
     isDrawing = true;
     lastPoint = getOverlayPoint(e);
     drawingOverlay.setPointerCapture(e.pointerId);
   });
 
   drawingOverlay.addEventListener('pointermove', e => {
-    if (!isDrawing || activeTool === 'select') return;
+    if (!isDrawing || activeTool === TOOLS.SELECT) return;
     const point = getOverlayPoint(e);
     overlayCtx.lineCap = 'round';
     overlayCtx.lineJoin = 'round';
-    if (activeTool === 'eraser') {
+    if (activeTool === TOOLS.ERASER) {
       overlayCtx.globalCompositeOperation = 'destination-out';
-      overlayCtx.lineWidth = 16;
+      overlayCtx.lineWidth = OVERLAY_ERASER_WIDTH;
     } else {
       overlayCtx.globalCompositeOperation = 'source-over';
-      overlayCtx.strokeStyle = activeTool === 'highlight' ? toolColor + '88' : toolColor;
-      overlayCtx.lineWidth = activeTool === 'highlight' ? 18 : 3;
+      overlayCtx.strokeStyle = activeTool === TOOLS.HIGHLIGHT
+        ? toolColor + OVERLAY_HIGHLIGHT_ALPHA
+        : toolColor;
+      overlayCtx.lineWidth = activeTool === TOOLS.HIGHLIGHT
+        ? OVERLAY_HIGHLIGHT_WIDTH
+        : OVERLAY_PEN_WIDTH;
     }
     overlayCtx.beginPath();
     overlayCtx.moveTo(lastPoint.x, lastPoint.y);
@@ -606,11 +684,18 @@
     lastPoint = point;
   });
 
-  const stopDrawing = () => { isDrawing = false; lastPoint = null; };
+  const stopDrawing = () => {
+    if (!isDrawing) return;
+    isDrawing = false;
+    lastPoint = null;
+    saveOverlayForCurrentPair();
+  };
   drawingOverlay.addEventListener('pointerup', stopDrawing);
   drawingOverlay.addEventListener('pointerleave', stopDrawing);
 
+  // ============================================================
   // Exportação
+  // ============================================================
   function download(filename, content, type) {
     const blob = new Blob([content], { type });
     const url = URL.createObjectURL(blob);
@@ -645,14 +730,21 @@
       JSON.stringify(session, null, 2), 'application/json');
   }
 
-  exportBtn.addEventListener('click', () => exportMenu.classList.toggle('hidden'));
+  exportBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    exportMenu.classList.toggle('hidden');
+  });
   document.addEventListener('click', e => {
-    if (!exportBtn.contains(e.target) && !exportMenu.contains(e.target)) exportMenu.classList.add('hidden');
+    if (!exportBtn.contains(e.target) && !exportMenu.contains(e.target)) {
+      exportMenu.classList.add('hidden');
+    }
   });
   exportMarkdown.addEventListener('click', () => { exportAsMarkdown(); exportMenu.classList.add('hidden'); });
   exportJSON.addEventListener('click', () => { exportAsJSON(); exportMenu.classList.add('hidden'); });
 
+  // ============================================================
   // Divisor redimensionável
+  // ============================================================
   function loadSplit() {
     const saved = localStorage.getItem(SPLIT_KEY);
     if (saved) workspace.style.gridTemplateColumns = saved;
@@ -673,10 +765,11 @@
     const rect = workspace.getBoundingClientRect();
     const total = rect.width;
     let leftPct = ((e.clientX - rect.left) / total) * 100;
-    const minPct = (320 / total) * 100;
+    const minPct = (MIN_PANEL_PX / total) * 100;
     const maxPct = 100 - minPct;
     leftPct = Math.max(minPct, Math.min(maxPct, leftPct));
-    workspace.style.gridTemplateColumns = `${leftPct}% 6px ${100 - leftPct - 0.6}%`;
+    workspace.style.gridTemplateColumns =
+      `${leftPct}% 6px ${100 - leftPct - RESIZER_WIDTH_PCT}%`;
   });
 
   document.addEventListener('mouseup', () => {
@@ -688,78 +781,104 @@
     localStorage.setItem(SPLIT_KEY, workspace.style.gridTemplateColumns);
   });
 
+  // ============================================================
   // Atalhos de teclado
+  // ============================================================
   document.addEventListener('keydown', e => {
     if (document.activeElement === noteEditor || document.activeElement === pageLinkInput) return;
 
     const alt = e.altKey;
     const ctrl = e.ctrlKey || e.metaKey;
+    const shift = e.shiftKey;
+    const key = e.key.toLowerCase();
 
     if (e.key === 'ArrowLeft') {
       e.preventDefault();
-      if (alt) {
-        setNoteIndex(currentNoteIndex - 1);
-        const pages = notebookPages[currentNoteIndex]?.linkedPdfPages;
-        if (pages && pages.length) goToPdfPage(Math.min(...pages));
-      } else changePage(-1);
+      if (alt) goToLinkedPage(currentNoteIndex - 1);
+      else changePage(-1);
+      return;
     }
     if (e.key === 'ArrowRight') {
       e.preventDefault();
-      if (alt) {
-        setNoteIndex(currentNoteIndex + 1);
-        const pages = notebookPages[currentNoteIndex]?.linkedPdfPages;
-        if (pages && pages.length) goToPdfPage(Math.min(...pages));
-      } else changePage(1);
+      if (alt) goToLinkedPage(currentNoteIndex + 1);
+      else changePage(1);
+      return;
     }
-    if (alt && e.key.toLowerCase() === 'n') {
+    if (alt && key === 'n') {
       e.preventDefault();
       createNotePage();
+      return;
     }
-    if (ctrl && (e.key === '+' || e.key === '=')) {
+    if (ctrl && key === 's') {
       e.preventDefault();
-      zoomIn.click();
+      saveSession();
+      return;
     }
-    if (ctrl && e.key === '-') {
-      e.preventDefault();
-      zoomOut.click();
-    }
-    if (ctrl && e.key.toLowerCase() === 'e') {
+    if (ctrl && key === 'e') {
       e.preventDefault();
       exportAsMarkdown();
+      return;
     }
-    if (ctrl && e.key.toLowerCase() === 'p') {
+    if (ctrl && key === 'p') {
       e.preventDefault();
       togglePreview();
+      return;
     }
-    if (!ctrl && !alt && e.key.toLowerCase() === 'v') { activeTool = 'select'; updateToolButtons(); }
-    if (!ctrl && !alt && e.key.toLowerCase() === 'h') { activeTool = 'highlight'; updateToolButtons(); }
-    if (!ctrl && !alt && e.key.toLowerCase() === 'p') { activeTool = 'pen'; updateToolButtons(); }
-    if (!ctrl && !alt && e.key.toLowerCase() === 'e') { activeTool = 'eraser'; updateToolButtons(); }
+    if (!ctrl && !alt && !shift && key === 'v') {
+      activeTool = TOOLS.SELECT;
+      updateToolButtons();
+      return;
+    }
+    if (!ctrl && !alt && !shift && key === 'h') {
+      activeTool = TOOLS.HIGHLIGHT;
+      updateToolButtons();
+      return;
+    }
+    if (!ctrl && !alt && shift && key === 'p') {
+      e.preventDefault();
+      activeTool = TOOLS.PEN;
+      updateToolButtons();
+      return;
+    }
+    if (!ctrl && !alt && !shift && key === 'x') {
+      activeTool = TOOLS.ERASER;
+      updateToolButtons();
+      return;
+    }
   });
 
+  // ============================================================
   // Restauração de sessão
+  // ============================================================
   function askRestore(session) {
     restoreBanner.classList.remove('hidden');
-    restoreYes.addEventListener('click', () => {
+    const onYes = () => {
       notebookPages = session.notebookPages || [];
       currentNoteIndex = session.lastNotebookIndex || 0;
-      zoom = session.zoom || 1;
-      zoomSelect.value = zoom;
       currentPageStart = (session.lastPdfPages && session.lastPdfPages[0]) || 1;
       restoreBanner.classList.add('hidden');
       if (pdfDocument) {
         renderPages();
         renderNotebook();
       }
-    });
-    restoreNo.addEventListener('click', () => {
+      cleanup();
+    };
+    const onNo = () => {
       clearSession();
       restoreBanner.classList.add('hidden');
-    });
+      cleanup();
+    };
+    const cleanup = () => {
+      restoreYes.removeEventListener('click', onYes);
+      restoreNo.removeEventListener('click', onNo);
+    };
+    restoreYes.addEventListener('click', onYes);
+    restoreNo.addEventListener('click', onNo);
   }
 
+  // ============================================================
   // Inicialização
-  console.log('[PDFNotes] DOM carregado, elementos principais:', !!uploadScreen, !!workspaceScreen, !!pdfInput);
+  // ============================================================
   uploadScreen.classList.remove('hidden');
   workspaceScreen.classList.add('hidden');
 
@@ -768,24 +887,20 @@
     askRestore(saved);
   }
 
+  const debouncedRender = debounce(() => {
+    if (pdfDocument) renderPages();
+  }, DEBOUNCE_RENDER_MS);
+
   window.addEventListener('resize', () => {
     resizeDrawingOverlay();
-    if (pdfDocument) renderPages();
+    debouncedRender();
   });
 
   // Re-renderiza PDF quando o container ganhar dimensões reais
   // (evita páginas microscópicas no primeiro carregamento)
   if (pdfContainer) {
-    const resizeObserver = new ResizeObserver(entries => {
-      if (pdfDocument && entries[0].contentRect.width > 0 && entries[0].contentRect.height > 0) {
-        renderPages();
-      }
-    });
+    const resizeObserver = new ResizeObserver(debouncedRender);
     resizeObserver.observe(pdfContainer);
   }
 
-  console.log('[PDFNotes] App pronto');
-  } catch (err) {
-    console.error('[PDFNotes] Erro fatal na inicialização:', err);
-  }
 })();

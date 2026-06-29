@@ -345,8 +345,8 @@
     }
     const page = await pdfDocument.getPage(pageNum);
     const container = pdfContainer;
-    const maxW = (container.clientWidth - 48) / 2;
-    const maxH = container.clientHeight - 32;
+    const maxW = container.clientWidth - 48;
+    const maxH = (container.clientHeight - 48) / 2;
     const baseVp = page.getViewport({ scale: 1 });
     let scale = Math.min(maxW / baseVp.width, maxH / baseVp.height) * zoom;
     if (scale < 0.05) scale = 0.05;

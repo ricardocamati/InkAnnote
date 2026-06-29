@@ -345,10 +345,15 @@
     }
     const page = await pdfDocument.getPage(pageNum);
     const container = pdfContainer;
-    const maxW = container.clientWidth - 48;
-    const maxH = (container.clientHeight - 48) / 2;
+    // TODO(ajuste): as páginas estão miúdas. O cálculo abaixo fita 2 páginas empilhadas
+    // dentro do container. Ajuste `availableH`/`availableW` ou remova o divisor por 2
+    // se quiser exibir só 1 página por vez, ou aumente o multiplicador de zoom.
+    const availableH = container.clientHeight - 32; // padding only, gap handled by layout
+    const availableW = container.clientWidth - 32;
     const baseVp = page.getViewport({ scale: 1 });
-    let scale = Math.min(maxW / baseVp.width, maxH / baseVp.height) * zoom;
+    // Fit two pages stacked: each page gets half height, then apply zoom multiplier
+    let fitScale = Math.min(availableW / baseVp.width, (availableH / 2) / baseVp.height);
+    let scale = fitScale * zoom;
     if (scale < 0.05) scale = 0.05;
     const viewport = page.getViewport({ scale });
 

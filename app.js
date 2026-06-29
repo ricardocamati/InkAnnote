@@ -258,57 +258,12 @@
   });
   newFileBtn.addEventListener('click', () => pdfInput.click());
 
-  // Crop automático de margens
+  // Crop automático de margens — DESLIGADO por padrão. Em PDFs com fundos
+  // escuros e divisórias claras (como o DNA-test.pdf), o algoritmo confunde
+  // elementos internos com margens e corta a página. Para reativar no futuro,
+  // substituir por análise mais robusta (limiar adaptativo por canal).
   async function detectCrop(page, scale) {
-    const key = `${page.pageNumber}@${scale}`;
-    if (cropCache.has(key)) return cropCache.get(key);
-
-    const vp = page.getViewport({ scale });
-    const offscreen = document.createElement('canvas');
-    offscreen.width = Math.floor(vp.width);
-    offscreen.height = Math.floor(vp.height);
-    const ctx = offscreen.getContext('2d');
-    await page.render({ canvasContext: ctx, viewport: vp }).promise;
-
-    const imageData = ctx.getImageData(0, 0, offscreen.width, offscreen.height);
-    const data = imageData.data;
-    const w = offscreen.width;
-    const h = offscreen.height;
-
-    function isWhiteRow(y) {
-      for (let x = 0; x < w; x++) {
-        const i = (y * w + x) * 4;
-        const avg = (data[i] + data[i+1] + data[i+2]) / 3;
-        if (avg < 250) return false;
-      }
-      return true;
-    }
-
-    function isWhiteCol(x) {
-      for (let y = 0; y < h; y++) {
-        const i = (y * w + x) * 4;
-        const avg = (data[i] + data[i+1] + data[i+2]) / 3;
-        if (avg < 250) return false;
-      }
-      return true;
-    }
-
-    let cropTop = 0, cropBottom = 0, cropLeft = 0, cropRight = 0;
-    for (let y = 0; y < h; y++) { if (!isWhiteRow(y)) { cropTop = y; break; } }
-    for (let y = h - 1; y >= 0; y--) { if (!isWhiteRow(y)) { cropBottom = h - 1 - y; break; } }
-    for (let x = 0; x < w; x++) { if (!isWhiteCol(x)) { cropLeft = x; break; } }
-    for (let x = w - 1; x >= 0; x--) { if (!isWhiteCol(x)) { cropRight = w - 1 - x; break; } }
-
-    // margem mínima de segurança
-    const pad = 4;
-    cropTop = Math.max(0, cropTop - pad);
-    cropBottom = Math.max(0, cropBottom - pad);
-    cropLeft = Math.max(0, cropLeft - pad);
-    cropRight = Math.max(0, cropRight - pad);
-
-    const crop = { cropTop, cropBottom, cropLeft, cropRight };
-    cropCache.set(key, crop);
-    return crop;
+    return { cropTop: 0, cropBottom: 0, cropLeft: 0, cropRight: 0 };
   }
 
   // PDF

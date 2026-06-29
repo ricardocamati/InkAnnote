@@ -422,6 +422,7 @@
     noteTotal.textContent = notebookPages.length;
     updateWordCount();
     if (previewMode) updatePreview();
+    setPreviewMode(previewMode); // inicia preview ao vivo conforme estado
     setSaveStatus(`Salvo às ${formatDate()}`);
   }
 
@@ -512,27 +513,34 @@
   });
   pageLinkInput.addEventListener('blur', () => saveLink());
 
-  // Preview Markdown
+  // Preview Markdown ao vivo — renderiza automaticamente abaixo do editor
   function updatePreview() {
     notePreview.innerHTML = marked.parse(noteEditor.value || '');
   }
 
-  function togglePreview() {
-    previewMode = !previewMode;
+  function setPreviewMode(active) {
+    previewMode = active;
     previewToggle.setAttribute('aria-pressed', previewMode);
     previewToggle.classList.toggle('active', previewMode);
+    notePreview.className = 'note-preview ' + (previewMode ? 'visible' : 'live');
     if (previewMode) {
-      updatePreview();
       noteEditor.classList.add('hidden');
-      notePreview.classList.remove('hidden');
     } else {
-      notePreview.classList.add('hidden');
       noteEditor.classList.remove('hidden');
-      focusEditor();
     }
+    updatePreview();
+  }
+
+  function togglePreview() {
+    setPreviewMode(!previewMode);
+    if (!previewMode) focusEditor();
   }
 
   previewToggle.addEventListener('click', togglePreview);
+  noteEditor.addEventListener('input', () => {
+    scheduleSave();
+    updatePreview();
+  });
 
   // Toolbar ferramentas
   toolBtns.forEach(btn => {

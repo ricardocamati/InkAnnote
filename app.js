@@ -313,7 +313,7 @@
     let fitScale = Math.min(scaleByHeight, scaleByWidth);
     let scale = fitScale * zoom;
     // Impede que o PDF fique microscópico quando o container ainda não tem altura
-    if (scale < 0.50) scale = 0.50;
+    if (scale < 1.50) scale = 1.50;
     const viewport = page.getViewport({ scale });
 
     let crop = { cropTop: 0, cropBottom: 0, cropLeft: 0, cropRight: 0 };

@@ -369,67 +369,125 @@ html, body {
 }
 .notebook-page.transitioning { opacity: 0; }
 
-.page-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 12px;
-  margin: 0;
-  background: transparent;
-  border-bottom: 1px solid var(--divider);
-  border-radius: 0;
-  font-size: 13px;
-  cursor: pointer;
-  position: relative;
-  transition: border-color 0.15s, background 0.15s;
-  min-height: 40px;
-  justify-content: space-between;
-}
-.page-header:hover { border-color: var(--accent); }
-
-.page-header .left {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.page-icon { font-size: 14px; }
-.page-link-label {
-  color: var(--accent);
-  font-weight: 600;
-}
-.edit-hint {
-  font-size: 12px;
-  color: var(--text-muted);
-  opacity: 0;
-  transform: translateX(-4px);
-  transition: opacity 150ms ease, transform 150ms ease;
-  white-space: nowrap;
-}
-.page-header:hover .edit-hint {
-  opacity: 1;
-  transform: translateX(0);
-}
-
-.page-link-edit {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+/* Corpo do notebook: sidebar + editor */
+.notebook-body {
   flex: 1;
+  display: flex;
+  min-height: 0;
+  overflow: hidden;
 }
 
-.page-link-edit input {
-  width: 100px;
-  padding: 4px 8px;
-  border: 1px solid var(--accent);
-  border-radius: 4px;
-  font-family: inherit;
+/* Sidebar de anotações */
+.notes-sidebar {
+  width: 220px;
+  min-width: 220px;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--divider);
+  background: var(--bg-notebook);
+  transition: width 200ms ease, min-width 200ms ease;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.notes-sidebar.collapsed {
+  width: 40px;
+  min-width: 40px;
+}
+
+.sidebar-toggle {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s;
+}
+.sidebar-toggle:hover { color: var(--text-primary); }
+
+.notes-list {
+  flex: 1;
+  overflow-y: auto;
+  list-style: none;
+  margin: 0;
+  padding: 4px 0;
+  opacity: 1;
+  transition: opacity 150ms;
+}
+.notes-sidebar.collapsed .notes-list {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.notes-list-item {
+  padding: 8px 14px;
+  cursor: pointer;
+  border-left: 2px solid transparent;
+  transition: background 0.12s;
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+}
+.notes-list-item:hover { background: var(--bg-toolbar); }
+.notes-list-item.active {
+  border-left-color: var(--accent);
+  background: var(--linked-indicator);
+}
+
+.item-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.item-name {
   font-size: 13px;
-  background: var(--bg-editor);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   color: var(--text-primary);
 }
-.confirm-hint { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
+.notes-list-item.active .item-name { color: var(--accent); font-weight: 600; }
 
+.item-pages {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.item-delete {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.12s, background 0.12s, color 0.12s;
+}
+.notes-list-item:hover .item-delete { opacity: 1; }
+.item-delete:hover {
+  background: var(--danger);
+  color: #fff;
+}
+
+/* Editor wrapper ocupa o espaço restante */
 .editor-wrapper {
   flex: 1;
   display: flex;
@@ -441,6 +499,95 @@ html, body {
   background: transparent;
   overflow: hidden;
 }
+
+.page-header {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 10px 14px;
+  margin: 0;
+  background: transparent;
+  border-bottom: 1px solid var(--divider);
+  border-radius: 0;
+  position: relative;
+  transition: border-color 0.15s;
+}
+.page-header:hover { border-color: var(--accent); }
+
+.header-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.header-bottom {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.page-name-display {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  cursor: pointer;
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.page-name-display:hover { color: var(--accent); }
+
+.page-name-input {
+  flex: 1;
+  padding: 3px 8px;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  background: var(--bg-editor);
+  color: var(--text-primary);
+  outline: none;
+}
+
+.pages-icon { font-size: 12px; }
+.page-link-label {
+  cursor: pointer;
+  font-size: 12px;
+}
+.page-link-label:hover { color: var(--accent); }
+
+.edit-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  opacity: 0;
+  transition: opacity 150ms ease;
+  white-space: nowrap;
+}
+.page-header:hover .edit-hint { opacity: 1; }
+
+.page-link-edit {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.page-link-edit input {
+  width: 100px;
+  padding: 4px 8px;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 12px;
+  background: var(--bg-editor);
+  color: var(--text-primary);
+}
+.confirm-hint { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
 
 .note-editor {
   flex: 1;
@@ -549,15 +696,16 @@ html, body {
 .page-footer {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   padding: 8px 12px 10px;
   font-size: 12px;
   color: var(--text-muted);
   flex-shrink: 0;
 }
-
-.notebook-nav {
-  justify-content: space-between;
-  gap: 10px;
+.footer-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 /* Banner */

@@ -104,41 +104,46 @@
       <div class="resizer" id="resizer" title="Arraste para redimensionar"></div>
 
       <section class="panel notebook-panel" id="notebookPanel">
-        <div id="notebookEmpty" class="notebook-empty">
-          <p>Nenhuma folha ainda.</p>
-          <button id="createFirstPage" class="btn btn-primary">Criar primeira folha</button>
-        </div>
-        <div id="notebookPage" class="notebook-page hidden">
-          <header class="page-header" id="pageHeader" title="Clique para editar o vínculo">
-            <div class="left">
-              <span class="page-icon">📄</span>
-              <span id="pageLinkLabel" class="page-link-label">Sem vínculo</span>
-            </div>
-            <span class="edit-hint">✏️ editar</span>
+        <div id="pageHeader" class="page-header hidden">
+          <div class="header-top">
+            <span id="pageNameDisplay" class="page-name-display">Sem título</span>
+            <input id="pageNameInput" class="page-name-input hidden" type="text" maxlength="60" />
+            <span class="edit-hint">clique para renomear</span>
+          </div>
+          <div class="header-bottom">
+            <span class="pages-icon">📎</span>
+            <span id="pageLinkLabel" class="page-link-label">Sem vínculo</span>
             <div id="pageLinkEdit" class="page-link-edit hidden">
-              <input type="text" id="pageLinkInput" placeholder="ex: 22-23" />
+              <input type="text" id="pageLinkInput" placeholder="ex: 1-2, 5" />
               <span class="confirm-hint">Enter para confirmar</span>
             </div>
-          </header>
-          <div class="editor-wrapper">
-            <div id="noteEditor" class="note-editor" spellcheck="false"></div>
           </div>
-          <footer class="page-footer">
-            <span id="wordCount">0 palavras</span>
-            <span id="saveStatus">Salvo</span>
-          </footer>
         </div>
-        <nav class="panel-nav notebook-nav">
-          <button id="notePrev" class="btn btn-icon" title="Folha anterior (Alt ←)">‹</button>
-          <div class="nav-pages">
-            <span>Folha</span>
-            <span id="noteIndex">0</span>
-            <span class="nav-sep">/</span>
-            <span id="noteTotal">0</span>
+
+        <div class="notebook-body">
+          <aside id="notesSidebar" class="notes-sidebar collapsed">
+            <button id="sidebarToggle" class="sidebar-toggle" title="Recolher">☰</button>
+            <ul id="notesList" class="notes-list"></ul>
+          </aside>
+
+          <div class="editor-wrapper">
+            <div id="notebookEmpty" class="notebook-empty">
+              <p>Nenhuma anotação ainda</p>
+              <button id="createFirstPage" class="btn btn-primary">Criar primeira folha</button>
+            </div>
+            <div id="notebookPage" class="notebook-page hidden">
+              <div id="noteEditor" class="note-editor" spellcheck="false"></div>
+            </div>
           </div>
-          <button id="noteNext" class="btn btn-icon" title="Próxima folha (Alt →)">›</button>
-          <button id="newNotePage" class="btn btn-primary btn-small" title="Nova folha (Alt N)">+ Nova</button>
-        </nav>
+        </div>
+
+        <footer class="page-footer">
+          <span id="wordCount">0 palavras</span>
+          <div class="footer-right">
+            <span id="saveStatus">Salvo</span>
+            <button id="newNotePage" class="btn btn-primary btn-small" title="Nova folha (Alt N)">+ Nova</button>
+          </div>
+        </footer>
       </section>
     </main>
   </div>

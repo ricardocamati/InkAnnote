@@ -82,15 +82,16 @@
   const pageLinkLabel = $('pageLinkLabel');
   const pageLinkEdit = $('pageLinkEdit');
   const pageLinkInput = $('pageLinkInput');
+  const pageNameDisplay = $('pageNameDisplay');
+  const pageNameInput = $('pageNameInput');
   const noteEditor = $('noteEditor');
   const wordCount = $('wordCount');
   const saveStatus = $('saveStatus');
-  const notePrev = $('notePrev');
-  const noteNext = $('noteNext');
-  const noteIndex = $('noteIndex');
-  const noteTotal = $('noteTotal');
   const newNotePage = $('newNotePage');
   const createFirstPage = $('createFirstPage');
+  const notesSidebar = $('notesSidebar');
+  const sidebarToggle = $('sidebarToggle');
+  const notesList = $('notesList');
   const toolBtns = document.querySelectorAll('.tool-btn');
   const colorPicker = $('colorPicker');
   const exportBtn = $('exportBtn');
@@ -176,6 +177,13 @@
     return `Págs. ${ranges.join(', ')} do PDF`;
   }
 
+  function suggestNoteName(linkedPages) {
+    if (!linkedPages || linkedPages.length === 0) return 'Nova folha';
+    const label = formatPageLink(linkedPages).replace(/ do PDF$/, '');
+    const existing = notebookPages.filter(p => p.name && p.name.startsWith(label));
+    return existing.length > 0 ? `${label} (${existing.length + 1})` : label;
+  }
+
   function normalizeNoteIndex(idx) {
     if (notebookPages.length === 0) return -1;
     if (idx < 0) return 0;
@@ -186,9 +194,9 @@
   function focusEditor() {
     if (currentNoteIndex < 0) return;
     setTimeout(() => {
-      if (milkdownReady && milkdownEditor) {
-        noteEditor.focus();
-      }
+      const pm = noteEditor.querySelector('.ProseMirror');
+      if (pm) pm.focus();
+      else noteEditor.focus();
     }, 50);
   }
 
@@ -512,17 +520,27 @@
     if (notebookPages.length === 0) {
       notebookEmpty.classList.remove('hidden');
       notebookPage.classList.add('hidden');
-      noteIndex.textContent = 0;
-      noteTotal.textContent = 0;
+      pageHeader.classList.add('hidden');
+      refreshNotesList();
       return;
     }
     notebookEmpty.classList.add('hidden');
     notebookPage.classList.remove('hidden');
+    pageHeader.classList.remove('hidden');
     const page = notebookPages[currentNoteIndex];
-    setEditorMarkdown(page.content || '');
+    if (milkdownReady) {
+      setEditorMarkdown(page.content || '');
+    } else {
+      const wait = setInterval(() => {
+        if (milkdownReady) {
+          setEditorMarkdown(page.content || '');
+          clearInterval(wait);
+        }
+      }, 100);
+    }
     pageLinkLabel.textContent = formatPageLink(page.linkedPdfPages);
-    noteIndex.textContent = currentNoteIndex + 1;
-    noteTotal.textContent = notebookPages.length;
+    pageNameDisplay.textContent = page.name?.trim() || 'Sem título';
+    refreshNotesList();
     updateWordCount();
     setSaveStatus(`Salvo às ${formatDate()}`);
   }
@@ -533,6 +551,7 @@
     }
     const page = {
       id: uuid(),
+      name: suggestNoteName(linkedPages),
       linkedPdfPages: linkedPages,
       content: '',
       drawings: {},
@@ -541,6 +560,7 @@
     };
     notebookPages.push(page);
     setNoteIndex(notebookPages.length - 1);
+    refreshNotesList();
     saveSession();
   }
 
@@ -552,15 +572,57 @@
     });
   });
 
+  sidebarToggle.addEventListener('click', () => {
+    notesSidebar.classList.toggle('collapsed');
+  });
+
+  function deleteNotePage(idx) {
+    if (idx < 0 || idx >= notebookPages.length) return;
+    const page = notebookPages[idx];
+    const name = page.name?.trim() || 'Sem título';
+    if (!confirm(`Apagar "${name}"? Esta ação não pode ser desfeita.`)) return;
+    notebookPages.splice(idx, 1);
+    if (notebookPages.length === 0) {
+      currentNoteIndex = -1;
+      renderNotebook();
+      saveSession();
+      return;
+    }
+    if (currentNoteIndex >= notebookPages.length) {
+      currentNoteIndex = notebookPages.length - 1;
+    } else if (idx < currentNoteIndex) {
+      currentNoteIndex--;
+    }
+    renderNotebook();
+    saveSession();
+  }
+
+  function refreshNotesList() {
+    notesList.innerHTML = '';
+    notebookPages.forEach((page, idx) => {
+      const li = document.createElement('li');
+      li.className = 'notes-list-item' + (idx === currentNoteIndex ? ' active' : '');
+      const name = page.name?.trim() || 'Sem título';
+      const link = formatPageLink(page.linkedPdfPages);
+      li.innerHTML = `<span class="item-content"><span class="item-name"></span><span class="item-pages"></span></span><button class="item-delete" title="Apagar">✕</button>`;
+      li.querySelector('.item-name').textContent = name;
+      li.querySelector('.item-pages').textContent = link;
+      li.title = name;
+      li.querySelector('.item-content').addEventListener('click', () => goToLinkedPage(idx));
+      li.querySelector('.item-delete').addEventListener('click', e => {
+        e.stopPropagation();
+        deleteNotePage(idx);
+      });
+      notesList.appendChild(li);
+    });
+  }
+
   function goToLinkedPage(targetIdx) {
     const resolved = normalizeNoteIndex(targetIdx);
     const pages = notebookPages[resolved]?.linkedPdfPages;
     setNoteIndex(resolved);
     if (pages && pages.length) goToPdfPage(minOf(pages));
   }
-
-  notePrev.addEventListener('click', () => goToLinkedPage(currentNoteIndex - 1));
-  noteNext.addEventListener('click', () => goToLinkedPage(currentNoteIndex + 1));
 
   function maybeCreateDefaultPage() {
     if (notebookPages.length === 0) {
@@ -601,6 +663,7 @@
     pageLinkLabel.textContent = formatPageLink(nums);
     pageLinkEdit.classList.add('hidden');
     pageLinkLabel.classList.remove('hidden');
+    refreshNotesList();
     saveSession();
     renderPages();
     focusEditor();
@@ -612,15 +675,51 @@
     focusEditor();
   }
 
-  pageHeader.addEventListener('click', () => {
-    if (!pageLinkEdit.classList.contains('hidden')) return;
+  // ============================================================
+  // Edição do nome inline
+  // ============================================================
+  function startEditName() {
+    if (currentNoteIndex < 0) return;
+    pageNameDisplay.classList.add('hidden');
+    pageNameInput.classList.remove('hidden');
+    pageNameInput.value = notebookPages[currentNoteIndex].name || '';
+    pageNameInput.focus();
+    pageNameInput.select();
+  }
+
+  function saveName() {
+    if (currentNoteIndex < 0) return;
+    const val = pageNameInput.value.trim();
+    notebookPages[currentNoteIndex].name = val || suggestNoteName(notebookPages[currentNoteIndex].linkedPdfPages);
+    pageNameDisplay.textContent = notebookPages[currentNoteIndex].name;
+    pageNameDisplay.classList.remove('hidden');
+    pageNameInput.classList.add('hidden');
+    refreshNotesList();
+    saveSession();
+  }
+
+  pageNameDisplay.addEventListener('click', e => {
+    e.stopPropagation();
+    startEditName();
+  });
+  pageNameInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); saveName(); }
+    if (e.key === 'Escape') {
+      pageNameDisplay.classList.remove('hidden');
+      pageNameInput.classList.add('hidden');
+    }
+  });
+  pageNameInput.addEventListener('blur', saveName);
+
+  pageLinkLabel.addEventListener('click', e => {
+    e.stopPropagation();
     startEditLink();
   });
   pageLinkInput.addEventListener('keydown', e => {
     if (e.key === 'Enter') { e.preventDefault(); saveLink(); }
     if (e.key === 'Escape') cancelLink();
   });
-  pageLinkInput.addEventListener('blur', () => saveLink());
+  pageLinkInput.addEventListener('blur', saveLink);
 
   // ============================================================
   // Editor Milkdown (WYSIWYG markdown) — carregado via dynamic import

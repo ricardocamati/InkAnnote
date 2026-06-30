@@ -33,9 +33,9 @@ export function slugify(str) {
     .trim().replace(/\s+/g, '-');
 }
 
-export function formatPageLink(nums) {
+export function formatPageLink(nums, suffix = ' do PDF') {
   if (!nums || nums.length === 0) return 'Sem vínculo';
-  if (nums.length === 1) return `Pág. ${nums[0]} do PDF`;
+  if (nums.length === 1) return `Pág. ${nums[0]}${suffix}`;
   const sorted = [...nums].sort((a, b) => a - b);
   const ranges = [];
   let start = sorted[0], prev = sorted[0];
@@ -45,29 +45,62 @@ export function formatPageLink(nums) {
     start = prev = sorted[i];
   }
   ranges.push(start === prev ? `${start}` : `${start}-${prev}`);
-  return `Págs. ${ranges.join(', ')} do PDF`;
+  return `Págs. ${ranges.join(', ')}${suffix}`;
+}
+
+export function markdownToPlain(md, { keepUrls = false, collapseBlankLines = false } = {}) {
+  let text = md
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/\*\*(.+?)\*\*/g, '$1')
+    .replace(/\*(.+?)\*/g, '$1')
+    .replace(/`(.+?)`/g, '$1');
+
+  text = keepUrls
+    ? text.replace(/\[(.+?)\]\((.+?)\)/g, '$1 ($2)')
+    : text.replace(/\[(.+?)\]\((.+?)\)/g, '$1');
+
+  text = text
+    .replace(/^[-*]\s+/gm, '• ')
+    .replace(/^>\s+/gm, '> ');
+
+  if (collapseBlankLines) {
+    text = text.replace(/\n\s*\n/g, '\n');
+  }
+
+  return text;
 }
 
 export async function getJSZip() {
   if (window._JSZip) return window._JSZip;
   if (window.JSZip) return (window._JSZip = window.JSZip);
-  await loadScript('/lib/jszip.min.js');
+  await loadScript('/lib/jszip.min.js', '_jszip_load');
+  if (!window.JSZip) throw new Error('JSZip não foi carregado corretamente');
   return (window._JSZip = window.JSZip);
 }
 
 export async function getJsPDF() {
   if (window._jsPDF) return window._jsPDF;
   if (window.jspdf && window.jspdf.jsPDF) return (window._jsPDF = window.jspdf.jsPDF);
-  await loadScript('/lib/jspdf.umd.min.js');
-  return (window._jsPDF = window.jspdf.jsPDF);
+  await loadScript('/lib/jspdf.umd.min.js', '_jspdf_load');
+  const ctor = window.jspdf?.jsPDF || window.jsPDF;
+  if (!ctor) throw new Error('jsPDF não foi carregado corretamente');
+  return (window._jsPDF = ctor);
 }
 
-function loadScript(src) {
-  return new Promise((resolve, reject) => {
+const scriptPromises = {};
+
+function loadScript(src, key) {
+  if (scriptPromises[key]) return scriptPromises[key];
+  scriptPromises[key] = new Promise((resolve, reject) => {
+    if (document.querySelector(`script[src="${src}"]`)) {
+      resolve();
+      return;
+    }
     const s = document.createElement('script');
     s.src = src;
     s.onload = resolve;
-    s.onerror = () => reject(new Error('Failed to load ' + src));
+    s.onerror = () => reject(new Error('Falha ao carregar ' + src));
     document.head.appendChild(s);
   });
+  return scriptPromises[key];
 }

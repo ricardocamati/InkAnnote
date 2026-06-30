@@ -13,9 +13,10 @@
   const OVERLAY_HIGHLIGHT_ALPHA = '88';
   const MIN_PANEL_PX = 320;
   const RESIZER_WIDTH_PCT = 0.6;
-  const PDF_PADDING_PX = 32;
   const MAX_DPR = 3;
-  const RENDER_QUALITY = 1.5;
+  const CROP_OFFSCREEN_SCALE = 2;
+  const CROP_THRESHOLD = 240;
+  const CROP_MARGIN = 0.97;
 
   const STORAGE_KEY = 'pdfnotes_session';
   const THEME_KEY = 'pdfnotes_theme';
@@ -62,9 +63,7 @@
   const fileNameEl = $('fileName');
   const pdfLoading = $('pdfLoading');
   const pdfContainer = $('pdfContainer');
-  const pdfPagesWrapper = $('pdfPagesWrapper');
-  const pdfCanvasLeft = $('pdfCanvasLeft');
-  const pdfCanvasRight = $('pdfCanvasRight');
+  const pdfCanvas = $('pdfCanvasLeft');
   const drawingOverlay = $('drawingOverlay');
   const pdfPrev = $('pdfPrev');
   const pdfNext = $('pdfNext');
@@ -331,55 +330,106 @@
     }
   }
 
-  async function renderPage(canvas, pageNum) {
-    if (pageNum > totalPages || pageNum < 1) {
-      canvas.width = 0;
-      canvas.height = 0;
-      canvas.style.width = '0px';
-      canvas.style.height = '0px';
-      return;
-    }
-    const containerH = pdfContainer.clientHeight;
-    const containerW = pdfContainer.clientWidth;
-    if (!containerH || !containerW) return; // container ainda não layoutado
-
-    const page = await pdfDocument.getPage(pageNum);
-    const baseVp = page.getViewport({ scale: 1 });
-    const pageH = (containerH - PDF_PADDING_PX) / 2;
-    const pageW = containerW - PDF_PADDING_PX;
-    const scaleByHeight = pageH / baseVp.height;
-    const scaleByWidth = pageW / baseVp.width;
-    const cssScale = Math.min(scaleByHeight, scaleByWidth);
-
-    const dpr = Math.min(window.devicePixelRatio || 1, MAX_DPR);
-    const renderScale = cssScale * dpr * RENDER_QUALITY;
-    const viewport = page.getViewport({ scale: renderScale });
-
-    const backingW = Math.max(1, Math.floor(viewport.width));
-    const backingH = Math.max(1, Math.floor(viewport.height));
-    canvas.width = backingW;
-    canvas.height = backingH;
-    canvas.style.width = Math.floor(backingW / (dpr * RENDER_QUALITY)) + 'px';
-    canvas.style.height = Math.floor(backingH / (dpr * RENDER_QUALITY)) + 'px';
-    const ctx = canvas.getContext('2d');
-    ctx.clearRect(0, 0, backingW, backingH);
-
-    await page.render({ canvasContext: ctx, viewport }).promise;
-  }
-
   async function renderPages() {
     if (!pdfDocument) return;
     const token = ++renderToken;
     const left = currentPageStart;
     const right = currentPageStart + 1;
 
-    await Promise.all([
-      renderPage(pdfCanvasLeft, left),
-      renderPage(pdfCanvasRight, right),
-    ]);
-    if (token !== renderToken) return; // render mais novo em andamento
+    async function renderOffscreen(pageNum) {
+      if (pageNum < 1 || pageNum > totalPages) return null;
+      const page = await pdfDocument.getPage(pageNum);
+      const vp = page.getViewport({ scale: CROP_OFFSCREEN_SCALE });
+      const oc = new OffscreenCanvas(Math.floor(vp.width), Math.floor(vp.height));
+      const ctx = oc.getContext('2d');
+      await page.render({ canvasContext: ctx, viewport: vp }).promise;
+      return { canvas: oc, ctx, page };
+    }
 
-    pdfPagesLabel.textContent = right <= totalPages ? `${left}, ${right}` : `${left}`;
+    function detectCrop(oc) {
+      const { canvas, ctx } = oc;
+      const W = canvas.width, H = canvas.height;
+      const data = ctx.getImageData(0, 0, W, H).data;
+      let top = H, bottom = 0, left = W, right = 0;
+      for (let y = 0; y < H; y++) {
+        for (let x = 0; x < W; x++) {
+          const i = (y * W + x) * 4;
+          if (data[i] < CROP_THRESHOLD || data[i + 1] < CROP_THRESHOLD || data[i + 2] < CROP_THRESHOLD) {
+            if (y < top) top = y;
+            if (y > bottom) bottom = y;
+            if (x < left) left = x;
+            if (x > right) right = x;
+          }
+        }
+      }
+      if (top > bottom) return { top: 0, bottom: H, left: 0, right: W };
+      return { top, bottom: bottom + 1, left, right: right + 1 };
+    }
+
+    const [ocL, ocR] = await Promise.all([
+      renderOffscreen(left),
+      renderOffscreen(right),
+    ]);
+    if (token !== renderToken) return;
+
+    const cropL = ocL ? detectCrop(ocL) : null;
+    const cropR = ocR ? detectCrop(ocR) : null;
+
+    const cropTop = Math.min(cropL?.top ?? 0, cropR?.top ?? 0);
+    const cropBottom = Math.max(
+      cropL?.bottom ?? ocL?.canvas.height ?? 0,
+      cropR?.bottom ?? ocR?.canvas.height ?? 0
+    );
+    const cropLeft = Math.min(cropL?.left ?? 0, cropR?.left ?? 0);
+    const cropRight = Math.max(
+      cropL?.right ?? ocL?.canvas.width ?? 0,
+      cropR?.right ?? ocR?.canvas.width ?? 0
+    );
+
+    const cropW = cropRight - cropLeft;
+    const cropH = cropBottom - cropTop;
+    if (cropW <= 0 || cropH <= 0) return;
+
+    const containerH = pdfContainer.clientHeight;
+    const containerW = pdfContainer.clientWidth;
+    if (!containerH || !containerW) return;
+
+    const rows = ocR ? 2 : 1;
+    const offScale = CROP_OFFSCREEN_SCALE;
+    const scaleH = (containerH / rows) / (cropH / offScale);
+    const scaleW = containerW / (cropW / offScale);
+    const finalScale = Math.min(scaleH, scaleW) * CROP_MARGIN;
+
+    const dispW = Math.max(1, Math.floor((cropW / offScale) * finalScale));
+    const dispH = Math.max(1, Math.floor((cropH / offScale) * finalScale));
+
+    const dpr = Math.min(window.devicePixelRatio || 1, MAX_DPR);
+    pdfCanvas.width = dispW * dpr;
+    pdfCanvas.height = dispH * dpr * rows;
+    pdfCanvas.style.width = dispW + 'px';
+    pdfCanvas.style.height = (dispH * rows) + 'px';
+
+    const ctx = pdfCanvas.getContext('2d');
+    ctx.clearRect(0, 0, pdfCanvas.width, pdfCanvas.height);
+
+    const destW = pdfCanvas.width;
+    const destH = dispH * dpr;
+
+    if (ocL) {
+      ctx.drawImage(ocL.canvas,
+        cropLeft, cropTop, cropW, cropH,
+        0, 0, destW, destH
+      );
+    }
+    if (ocR) {
+      ctx.drawImage(ocR.canvas,
+        cropLeft, cropTop, cropW, cropH,
+        0, destH, destW, destH
+      );
+    }
+
+    if (token !== renderToken) return;
+    pdfPagesLabel.textContent = ocR ? `${left}, ${right}` : `${left}`;
     const linked = [left, right].filter(p => p <= totalPages).some(hasLinkedPage);
     linkedIndicator.classList.toggle('visible', linked);
 
@@ -616,8 +666,8 @@
   }
 
   function resizeDrawingOverlay() {
-    drawingOverlay.width = pdfPagesWrapper.clientWidth;
-    drawingOverlay.height = pdfPagesWrapper.clientHeight;
+    drawingOverlay.width = pdfCanvas.clientWidth;
+    drawingOverlay.height = pdfCanvas.clientHeight;
   }
 
   function clearOverlay() {

@@ -270,25 +270,13 @@ html, body {
   background: var(--bg-primary);
 }
 
-.pdf-pages-wrapper {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 0;
-  flex-shrink: 0;
-  line-height: 0;
-  margin: auto;
-}
-
 .pdf-canvas {
   background: transparent;
   border-radius: 2px;
-  flex: 0 0 auto;
-  min-height: 0;
   display: block;
-  margin: 0 auto;
+  margin: auto;
+  flex: 0 0 auto;
+  image-rendering: auto;
 }
 
 .drawing-overlay {
@@ -376,6 +364,7 @@ html, body {
   overflow: hidden;
   transition: opacity 150ms ease;
   position: relative;
+  isolation: isolate;
   padding: 0;
 }
 .notebook-page.transitioning { opacity: 0; }
@@ -500,11 +489,7 @@ html, body {
 }
 
 .note-preview.live {
-  position: absolute;
-  inset: 12px;
-  opacity: 0.08;
-  pointer-events: none;
-  display: block;
+  display: none;
 }
 
 .note-preview.visible {

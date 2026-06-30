@@ -137,12 +137,8 @@
             <span class="opt-title">Para Notion</span>
             <span class="opt-desc">Arquivo .md importável no Notion. Sem imagens de slide.</span>
           </button>
-          <button class="export-option" data-export="md-plain">
-            <span class="opt-title">Markdown simples</span>
-            <span class="opt-desc">Arquivo .md genérico. Funciona em qualquer editor.</span>
-          </button>
         </div>
-        <div class="export-group">
+        <div class="export-group hidden">
           <h3>Obsidian</h3>
           <button class="export-option" data-export="obsidian-zip">
             <span class="opt-title">Vault Obsidian (.zip)</span>
@@ -151,14 +147,21 @@
         </div>
         <div class="export-group">
           <h3>PDF</h3>
-          <button class="export-option" data-export="pdf-notes">
-            <span class="opt-title">Slides vinculados + anotações</span>
-            <span class="opt-desc">Apenas os slides com anotações associadas.</span>
-          </button>
           <button class="export-option" data-export="pdf-full">
             <span class="opt-title">PDF completo com anotações</span>
             <span class="opt-desc">Todos os slides do PDF original + anotações intercaladas.</span>
             <span class="opt-warn">Pode demorar para PDFs grandes</span>
+          </button>
+          <button class="export-option hidden" data-export="pdf-notes">
+            <span class="opt-title">Slides vinculados + anotações</span>
+            <span class="opt-desc">Apenas os slides com anotações associadas.</span>
+          </button>
+        </div>
+        <div class="export-group hidden">
+          <h3>Outros</h3>
+          <button class="export-option" data-export="md-plain">
+            <span class="opt-title">Markdown simples</span>
+            <span class="opt-desc">Arquivo .md genérico. Funciona em qualquer editor.</span>
           </button>
         </div>
       </div>

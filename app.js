@@ -277,7 +277,8 @@
     if (!milkdownReady || !milkdownEditor || !getMarkdownFn) return '';
     try {
       return milkdownEditor.action(getMarkdownFn()) || '';
-    } catch {
+    } catch (e) {
+      console.error('[PDFNotes] Erro ao ler markdown:', e);
       return '';
     }
   }
@@ -286,7 +287,73 @@
     if (!milkdownReady || !milkdownEditor || !replaceAllFn) return;
     try {
       milkdownEditor.action(replaceAllFn(md || ''));
-    } catch { /* ignore */ }
+    } catch (e) {
+      console.error('[PDFNotes] Erro ao escrever markdown:', e);
+    }
+  }
+
+  // Expõe globalmente para testes Selenium
+  window.setEditorMarkdown = setEditorMarkdown;
+  window.getEditorMarkdown = getEditorMarkdown;
+  window.createTestNote = (name, md, pages = null) => {
+    if (notebookPages.length === 0) {
+      notebookEmpty.classList.add('hidden');
+      notebookPage.classList.remove('hidden');
+      pageHeader.classList.remove('hidden');
+    }
+    createNotePage(pages);
+    const page = notebookPages[currentNoteIndex];
+    if (name) page.name = name;
+    page.content = md || '';
+    renderNotebook();
+    saveSession();
+    return page;
+  };
+
+  async function initMilkdown() {
+    if (milkdownReady) return;
+
+    // Espera o notebookPage ficar visível (setNoteIndex tem transition de 150ms)
+    let tries = 0;
+    while (notebookPage.classList.contains('hidden') && tries < 20) {
+      await new Promise(r => setTimeout(r, 50));
+      tries++;
+    }
+    if (notebookPage.classList.contains('hidden')) {
+      console.warn('[PDFNotes] notebookPage ainda hidden após retry, abortando Milkdown');
+      return;
+    }
+
+    console.log('[PDFNotes] Inicializando Milkdown...');
+    const { Editor, defaultValueCtx, rootCtx, commonmark, listener, listenerCtx, getMarkdown: gm, replaceAll: ra } = await loadMilkdownModules();
+    getMarkdownFn = gm;
+    replaceAllFn = ra;
+
+    try {
+      milkdownEditor = await Editor.make()
+        .config(ctx => {
+          ctx.set(rootCtx, noteEditor);
+          ctx.set(defaultValueCtx, notebookPages[currentNoteIndex]?.content || '');
+          ctx.get(listenerCtx).markdownUpdated(() => {
+            scheduleSave();
+          });
+        })
+        .use(commonmark)
+        .use(listener)
+        .create();
+
+      milkdownReady = true;
+      console.log('[PDFNotes] Milkdown pronto');
+      if (currentNoteIndex >= 0) {
+        setEditorMarkdown(notebookPages[currentNoteIndex].content || '');
+      }
+      updateWordCount();
+      focusEditor();
+    } catch (err) {
+      console.error('[PDFNotes] Erro ao inicializar Milkdown:', err);
+      milkdownEditor = null;
+      milkdownReady = false;
+    }
   }
 
   function scheduleSave() {
@@ -542,13 +609,9 @@
       if (focus) focusEditor();
       return target;
     }
-    notebookPage.classList.add('transitioning');
-    setTimeout(() => {
-      currentNoteIndex = target;
-      renderNotebook();
-      notebookPage.classList.remove('transitioning');
-      if (focus) focusEditor();
-    }, NOTE_TRANSITION_MS);
+    currentNoteIndex = target;
+    renderNotebook();
+    if (focus) focusEditor();
     return target;
   }
 

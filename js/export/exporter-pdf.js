@@ -12,10 +12,6 @@ export async function exportPdfWithNotes(session, { includeAllSlides } = {}) {
   const doc = new jsPDF('p', 'mm', 'a4');
   const title = (fileName || 'anotacoes').replace(/\.pdf$/i, '');
 
-  // Imagem ocupa metade superior da página, mantendo proporção original do PDF
-  const imgW = CONTENT_W;
-  const maxImgH = (H / 2) - MARGIN_Y * 2;
-
   let pages;
   if (includeAllSlides) {
     pages = [];
@@ -30,17 +26,17 @@ export async function exportPdfWithNotes(session, { includeAllSlides } = {}) {
     pages = [...linked].sort((a, b) => a - b);
   }
 
-  let firstPage = true;
+  const imgW = CONTENT_W;
+  const maxImgH = (H / 2) - MARGIN_Y * 2;
+
   for (let i = 0; i < pages.length; i++) {
     const pageNum = pages[i];
     const pct = Math.round((i / pages.length) * 80) + 5;
     onProgress?.(pct, `Renderizando página ${pageNum}...`);
 
-    if (!firstPage) doc.addPage();
-    firstPage = false;
+    if (i > 0) doc.addPage();
 
-    const dataURL = await renderPageToDataURL(pdfDocument, pageNum, 2);
-    // Obtém proporção real da página
+    const dataURL = await renderPageToDataURL(pdfDocument, pageNum, 0.8);
     const tmpPage = await pdfDocument.getPage(pageNum);
     const tmpVp = tmpPage.getViewport({ scale: 1 });
     const ratio = tmpVp.height / tmpVp.width;
@@ -94,6 +90,9 @@ export async function exportPdfWithNotes(session, { includeAllSlides } = {}) {
       doc.text('Sem anotações para esta página.', MARGIN_X, cursorY);
       doc.setTextColor(0);
     }
+
+    // Libera memória a cada página
+    await new Promise(r => setTimeout(r, 0));
   }
 
   onProgress?.(98, 'Gerando PDF...');

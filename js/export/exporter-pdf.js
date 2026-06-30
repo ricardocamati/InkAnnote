@@ -52,9 +52,12 @@ export async function exportPdfWithNotes(session, { includeAllSlides } = {}) {
   }
 
   const totalPairs = pagePairs.length;
+  let pageCounter = 0;
+  let totalPages = 0; // recalculado ao final
+  const pageLabels = []; // rótulo de cada página gerada
 
   // 2. Helpers de desenho
-  function drawPageChrome(label, pageIndex, totalPages) {
+  function drawPageChrome(label, pageIndex, totalPagesKnown) {
     doc.setFontSize(9);
     doc.setTextColor(140);
     doc.setFont(undefined, 'normal');
@@ -63,24 +66,9 @@ export async function exportPdfWithNotes(session, { includeAllSlides } = {}) {
 
     const dateStr = new Date().toLocaleDateString('pt-BR');
     doc.text(`Exportado em ${dateStr}`, MARGIN_X, FOOTER_Y);
-    const counterText = totalPages ? `${pageIndex} / ${totalPages}` : `${pageIndex}`;
+    const counterText = totalPagesKnown ? `${pageIndex} / ${totalPagesKnown}` : `${pageIndex}`;
     doc.text(counterText, W - MARGIN_X, FOOTER_Y, { align: 'right' });
     doc.setTextColor(0);
-  }
-
-  async function drawSlides(leftNum, rightNum) {
-    const slideGapY = 6;
-    const maxSlideH = (USABLE_H - slideGapY) / 2;
-
-    if (pdfIsPortrait && rightNum) {
-      const halfGap = 4;
-      const halfW = (COL_SLIDES_W - halfGap) / 2;
-      await drawSlide(leftNum, MARGIN_X, MARGIN_Y, halfW, USABLE_H);
-      await drawSlide(rightNum, MARGIN_X + halfW + halfGap, MARGIN_Y, halfW, USABLE_H);
-    } else {
-      await drawSlide(leftNum, MARGIN_X, MARGIN_Y, COL_SLIDES_W, maxSlideH);
-      if (rightNum) await drawSlide(rightNum, MARGIN_X, MARGIN_Y + maxSlideH + slideGapY, COL_SLIDES_W, maxSlideH);
-    }
   }
 
   async function drawSlide(pageNum, x, y, maxW, maxH) {
@@ -103,46 +91,118 @@ export async function exportPdfWithNotes(session, { includeAllSlides } = {}) {
     return { w: drawW, h: drawH };
   }
 
-  function renderNoteHeader(note, cursorY) {
+  function measureNoteBlock(note, colWidth) {
+    const plain = markdownToPlain(note.content || 'Sem conteúdo.', { collapseBlankLines: true });
+    doc.setFontSize(10);
+    const lines = doc.splitTextToSize(plain, colWidth);
+    const lineHeight = 4.5;
+    const headerH = 6 + 4 + 5; // título + vínculo + divisória
+    const blockH = headerH + (lines.length * lineHeight) + 8;
+    return { lines, blockH };
+  }
+
+  function drawNoteHeader(note, x, cursorY) {
     doc.setFontSize(12);
     doc.setFont(undefined, 'bold');
-    doc.text(note.name?.trim() || 'Sem título', COL_NOTES_X, cursorY);
+    doc.text(note.name?.trim() || 'Sem título', x, cursorY);
     cursorY += 6;
 
     doc.setFontSize(8);
     doc.setFont(undefined, 'normal');
     doc.setTextColor(120);
-    doc.text(formatPageLink(note.linkedPdfPages), COL_NOTES_X, cursorY);
+    doc.text(formatPageLink(note.linkedPdfPages), x, cursorY);
     cursorY += 4;
     doc.setTextColor(0);
 
     doc.setDrawColor(220);
-    doc.line(COL_NOTES_X, cursorY, COL_NOTES_X + COL_NOTES_W, cursorY);
+    doc.line(x, cursorY, x + (W - MARGIN_X * 2), cursorY);
     cursorY += 5;
     return cursorY;
   }
 
-  function measureNoteBlock(note) {
-    const plain = markdownToPlain(note.content || 'Sem conteúdo.', { collapseBlankLines: true });
-    doc.setFontSize(10);
-    const lines = doc.splitTextToSize(plain, COL_NOTES_W);
-    const lineHeight = 4.5;
-    const headerH = 6 + 4 + 5; // nome + vínculo + divisória
-    return { plain, lines, headerH, blockH: headerH + lines.length * lineHeight };
-  }
-
-  // 3. Loop principal por par de páginas
-  let pageCounter = 0;
-  let totalPages = 0; // será calculado ao final
-  const pageCounterByPair = [];
-
-  function startNewPage(label) {
+  function startPage(label) {
     if (pageCounter > 0) doc.addPage();
     pageCounter++;
-    drawPageChrome(label, pageCounter, totalPages || null);
+    drawPageChrome(label, pageCounter, null);
+    pageLabels.push(label);
     return pageCounter;
   }
 
+  function drawNotesInColumn(notes, x, startY, colWidth, maxY) {
+    let cursorY = startY;
+    let renderedCount = 0;
+    const lineHeight = 4.5;
+
+    for (const note of notes) {
+      const { lines, blockH } = measureNoteBlock(note, colWidth);
+
+      // Nota não cabe inteira? Para aqui, devolve resto.
+      if (cursorY + blockH > maxY) break;
+
+      cursorY = drawNoteHeader(note, x, cursorY);
+      doc.setFontSize(10);
+      doc.text(lines, x, cursorY);
+      cursorY += lines.length * lineHeight + 8;
+      renderedCount++;
+    }
+
+    if (notes.length === 0) {
+      doc.setFontSize(10);
+      doc.setTextColor(150);
+      doc.text('Sem anotações para estas páginas.', x, startY);
+      doc.setTextColor(0);
+    }
+
+    return { renderedCount };
+  }
+
+  async function drawExtraNotesPages(notes, leftNum, rightNum) {
+    const fullX = MARGIN_X;
+    const fullW = W - MARGIN_X * 2;
+    const lineHeight = 4.5;
+    let remaining = notes.map(n => ({ ...n }));
+    const pairLabel = formatPageLink([leftNum, rightNum].filter(Boolean));
+
+    while (remaining.length > 0) {
+      startPage(`${pairLabel} (continuação)`);
+      let cursorY = MARGIN_Y + 6;
+      const consumed = [];
+
+      for (const note of remaining) {
+        const { lines, blockH } = measureNoteBlock(note, fullW);
+
+        // Caso extremo: nota gigante não cabe nem em página cheia — faz split parcial
+        if (cursorY + blockH > H - MARGIN_Y && consumed.length === 0) {
+          const availableH = (H - MARGIN_Y) - cursorY - 15;
+          const maxLines = Math.max(1, Math.floor(availableH / lineHeight));
+          const partial = lines.slice(0, maxLines);
+          const restText = lines.slice(maxLines).join('\n');
+
+          cursorY = drawNoteHeader(note, fullX, cursorY);
+          doc.setFontSize(10);
+          doc.text(partial, fullX, cursorY);
+
+          if (restText.trim()) {
+            remaining = [{ ...note, content: restText }, ...remaining.slice(1)];
+          }
+          break;
+        }
+
+        if (cursorY + blockH > H - MARGIN_Y) break;
+
+        cursorY = drawNoteHeader(note, fullX, cursorY);
+        doc.setFontSize(10);
+        doc.text(lines, fullX, cursorY);
+        cursorY += lines.length * lineHeight + 8;
+        consumed.push(note);
+        await new Promise(r => setTimeout(r, 0));
+      }
+
+      remaining = remaining.filter(n => !consumed.includes(n));
+    }
+  }
+
+  // 3. Loop principal por par de páginas
   for (let i = 0; i < totalPairs; i++) {
     const [leftNum, rightNum] = pagePairs[i];
     const pct = Math.round((i / totalPairs) * 80) + 5;
@@ -150,58 +210,38 @@ export async function exportPdfWithNotes(session, { includeAllSlides } = {}) {
 
     const pairLabel = formatPageLink([leftNum, rightNum].filter(Boolean));
 
-    // Coleta e mede todas as notas do par
+    // FASE 1: desenha os slides uma única vez
+    startPage(pairLabel);
+
+    if (pdfIsPortrait && rightNum) {
+      const halfGap = 4;
+      const halfW = (COL_SLIDES_W - halfGap) / 2;
+      await drawSlide(leftNum, MARGIN_X, MARGIN_Y, halfW, USABLE_H);
+      await drawSlide(rightNum, MARGIN_X + halfW + halfGap, MARGIN_Y, halfW, USABLE_H);
+    } else {
+      const slideGapY = 6;
+      const maxSlideH = (USABLE_H - slideGapY) / 2;
+      await drawSlide(leftNum, MARGIN_X, MARGIN_Y, COL_SLIDES_W, maxSlideH);
+      if (rightNum) await drawSlide(rightNum, MARGIN_X, MARGIN_Y + maxSlideH + slideGapY, COL_SLIDES_W, maxSlideH);
+    }
+
+    // FASE 2: desenha notas na coluna direita até estourar
     const linkedNotes = notebookPages.filter(note =>
       (note.linkedPdfPages || []).some(p => p === leftNum || p === rightNum)
     );
-    const noteBlocks = linkedNotes.map(n => ({ note: n, ...measureNoteBlock(n) }));
+    const { renderedCount } = drawNotesInColumn(linkedNotes, COL_NOTES_X, MARGIN_Y, COL_NOTES_W, H - MARGIN_Y);
 
-    // Layout: desenha slides à esquerda e distribui notas entre páginas
-    let pairPageCount = 0;
-    startNewPage(pairLabel);
-    pairPageCount++;
-    await drawSlides(leftNum, rightNum);
-
-    let cursorY = MARGIN_Y;
-    const safeY = H - MARGIN_Y;
-
-    if (noteBlocks.length === 0) {
-      doc.setFontSize(10);
-      doc.setTextColor(150);
-      doc.text('Sem anotações para estas páginas.', COL_NOTES_X, cursorY);
-      doc.setTextColor(0);
+    // FASE 3: notas excedentes vão para página(s) só com notas
+    const remainingNotes = linkedNotes.slice(renderedCount);
+    if (remainingNotes.length > 0) {
+      await drawExtraNotesPages(remainingNotes, leftNum, rightNum);
     }
 
-    for (const block of noteBlocks) {
-      // Se a nota inteira não cabe, quebra para nova página com slides repetidos
-      if (cursorY + block.blockH > safeY) {
-        startNewPage(`${pairLabel} (cont.)`);
-        pairPageCount++;
-        await drawSlides(leftNum, rightNum);
-        cursorY = MARGIN_Y;
-      }
-
-      cursorY = renderNoteHeader(block.note, cursorY);
-      doc.text(block.lines, COL_NOTES_X, cursorY);
-      cursorY += block.lines.length * 4.5 + 8;
-
-      await new Promise(r => setTimeout(r, 0));
-    }
-
-    pageCounterByPair.push(pairPageCount);
     await new Promise(r => setTimeout(r, 0));
   }
 
-  // Recalcula total de páginas real e redesenha rodapés com numeração final
+  // 4. Recalcula total de páginas e redesenha rodapés
   totalPages = pageCounter;
-  const pageLabels = [];
-  for (let i = 0; i < totalPairs; i++) {
-    const pair = pagePairs[i];
-    const label = formatPageLink(pair.filter(Boolean));
-    for (let j = 0; j < (pageCounterByPair[i] || 1); j++) {
-      pageLabels.push(j === 0 ? label : `${label} (cont.)`);
-    }
-  }
   for (let i = 1; i <= totalPages; i++) {
     doc.setPage(i);
     doc.setFillColor(255);

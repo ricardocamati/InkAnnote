@@ -14,6 +14,11 @@ const COL_NOTES_X = MARGIN_X + COL_SLIDES_W + GAP_COLS;
 const HEADER_Y = 6;
 const FOOTER_Y = H - 4;
 const USABLE_H = H - MARGIN_Y * 2;
+const LINE_HEIGHT = 3.8;       // compacto para caber mais linhas
+const TITLE_LINE_H = 5;        // título
+const LINK_LINE_H = 3.5;       // vínculo
+const DIVIDER_H = 4;           // divisória + espaço
+const NOTE_GAP = 5;            // gap entre notas
 
 export async function exportPdfWithNotes(session, { includeAllSlides } = {}) {
   const { fileName, pdfDocument, notebookPages, onProgress } = session;
@@ -93,30 +98,29 @@ export async function exportPdfWithNotes(session, { includeAllSlides } = {}) {
 
   function measureNoteBlock(note, colWidth) {
     const plain = markdownToPlain(note.content || 'Sem conteúdo.', { collapseBlankLines: true });
-    doc.setFontSize(10);
+    doc.setFontSize(9); // fonte ligeiramente menor para economizar espaço
     const lines = doc.splitTextToSize(plain, colWidth);
-    const lineHeight = 4.5;
-    const headerH = 6 + 4 + 5; // título + vínculo + divisória
-    const blockH = headerH + (lines.length * lineHeight) + 8;
+    const headerH = TITLE_LINE_H + LINK_LINE_H + DIVIDER_H; // título + vínculo + divisória
+    const blockH = headerH + (lines.length * LINE_HEIGHT) + NOTE_GAP;
     return { lines, blockH };
   }
 
   function drawNoteHeader(note, x, cursorY) {
-    doc.setFontSize(12);
+    doc.setFontSize(11); // título compacto
     doc.setFont(undefined, 'bold');
     doc.text(note.name?.trim() || 'Sem título', x, cursorY);
-    cursorY += 6;
+    cursorY += TITLE_LINE_H;
 
-    doc.setFontSize(8);
+    doc.setFontSize(7); // vínculo compacto
     doc.setFont(undefined, 'normal');
     doc.setTextColor(120);
     doc.text(formatPageLink(note.linkedPdfPages), x, cursorY);
-    cursorY += 4;
+    cursorY += LINK_LINE_H;
     doc.setTextColor(0);
 
     doc.setDrawColor(220);
     doc.line(x, cursorY, x + (W - MARGIN_X * 2), cursorY);
-    cursorY += 5;
+    cursorY += DIVIDER_H - 1; // já incluímos parte do espaço na linha
     return cursorY;
   }
 
@@ -131,7 +135,6 @@ export async function exportPdfWithNotes(session, { includeAllSlides } = {}) {
   function drawNotesInColumn(notes, x, startY, colWidth, maxY) {
     let cursorY = startY;
     let renderedCount = 0;
-    const lineHeight = 4.5;
 
     for (const note of notes) {
       const { lines, blockH } = measureNoteBlock(note, colWidth);
@@ -140,14 +143,14 @@ export async function exportPdfWithNotes(session, { includeAllSlides } = {}) {
       if (cursorY + blockH > maxY) break;
 
       cursorY = drawNoteHeader(note, x, cursorY);
-      doc.setFontSize(10);
+      doc.setFontSize(9);
       doc.text(lines, x, cursorY);
-      cursorY += lines.length * lineHeight + 8;
+      cursorY += lines.length * LINE_HEIGHT + NOTE_GAP;
       renderedCount++;
     }
 
     if (notes.length === 0) {
-      doc.setFontSize(10);
+      doc.setFontSize(9);
       doc.setTextColor(150);
       doc.text('Sem anotações para estas páginas.', x, startY);
       doc.setTextColor(0);
@@ -159,7 +162,6 @@ export async function exportPdfWithNotes(session, { includeAllSlides } = {}) {
   async function drawExtraNotesPages(notes, leftNum, rightNum) {
     const fullX = MARGIN_X;
     const fullW = W - MARGIN_X * 2;
-    const lineHeight = 4.5;
     let remaining = notes.map(n => ({ ...n }));
     const pairLabel = formatPageLink([leftNum, rightNum].filter(Boolean));
 
@@ -174,12 +176,12 @@ export async function exportPdfWithNotes(session, { includeAllSlides } = {}) {
         // Caso extremo: nota gigante não cabe nem em página cheia — faz split parcial
         if (cursorY + blockH > H - MARGIN_Y && consumed.length === 0) {
           const availableH = (H - MARGIN_Y) - cursorY - 15;
-          const maxLines = Math.max(1, Math.floor(availableH / lineHeight));
+          const maxLines = Math.max(1, Math.floor(availableH / LINE_HEIGHT));
           const partial = lines.slice(0, maxLines);
           const restText = lines.slice(maxLines).join('\n');
 
           cursorY = drawNoteHeader(note, fullX, cursorY);
-          doc.setFontSize(10);
+          doc.setFontSize(9);
           doc.text(partial, fullX, cursorY);
 
           if (restText.trim()) {
@@ -191,9 +193,9 @@ export async function exportPdfWithNotes(session, { includeAllSlides } = {}) {
         if (cursorY + blockH > H - MARGIN_Y) break;
 
         cursorY = drawNoteHeader(note, fullX, cursorY);
-        doc.setFontSize(10);
+        doc.setFontSize(9);
         doc.text(lines, fullX, cursorY);
-        cursorY += lines.length * lineHeight + 8;
+        cursorY += lines.length * LINE_HEIGHT + NOTE_GAP;
         consumed.push(note);
         await new Promise(r => setTimeout(r, 0));
       }

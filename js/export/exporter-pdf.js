@@ -105,7 +105,7 @@ export async function exportPdfWithNotes(session, { includeAllSlides } = {}) {
     return { lines, blockH };
   }
 
-  function drawNoteHeader(note, x, cursorY) {
+  function drawNoteHeader(note, x, cursorY, colWidth) {
     doc.setFontSize(11); // título compacto
     doc.setFont(undefined, 'bold');
     doc.text(note.name?.trim() || 'Sem título', x, cursorY);
@@ -119,7 +119,7 @@ export async function exportPdfWithNotes(session, { includeAllSlides } = {}) {
     doc.setTextColor(0);
 
     doc.setDrawColor(220);
-    doc.line(x, cursorY, x + (W - MARGIN_X * 2), cursorY);
+    doc.line(x, cursorY, x + colWidth, cursorY);
     cursorY += DIVIDER_H - 1; // já incluímos parte do espaço na linha
     return cursorY;
   }
@@ -142,7 +142,7 @@ export async function exportPdfWithNotes(session, { includeAllSlides } = {}) {
       // Nota não cabe inteira? Para aqui, devolve resto.
       if (cursorY + blockH > maxY) break;
 
-      cursorY = drawNoteHeader(note, x, cursorY);
+      cursorY = drawNoteHeader(note, x, cursorY, colWidth);
       doc.setFontSize(9);
       doc.text(lines, x, cursorY);
       cursorY += lines.length * LINE_HEIGHT + NOTE_GAP;
@@ -180,7 +180,7 @@ export async function exportPdfWithNotes(session, { includeAllSlides } = {}) {
           const partial = lines.slice(0, maxLines);
           const restText = lines.slice(maxLines).join('\n');
 
-          cursorY = drawNoteHeader(note, fullX, cursorY);
+          cursorY = drawNoteHeader(note, fullX, cursorY, fullW);
           doc.setFontSize(9);
           doc.text(partial, fullX, cursorY);
 
@@ -192,7 +192,7 @@ export async function exportPdfWithNotes(session, { includeAllSlides } = {}) {
 
         if (cursorY + blockH > H - MARGIN_Y) break;
 
-        cursorY = drawNoteHeader(note, fullX, cursorY);
+        cursorY = drawNoteHeader(note, fullX, cursorY, fullW);
         doc.setFontSize(9);
         doc.text(lines, fullX, cursorY);
         cursorY += lines.length * LINE_HEIGHT + NOTE_GAP;

@@ -51,23 +51,34 @@ export function formatPageLink(nums) {
 export async function getJSZip() {
   if (window._JSZip) return window._JSZip;
   if (window.JSZip) return (window._JSZip = window.JSZip);
-  await loadScript('/lib/jszip.min.js');
+  await loadScript('/lib/jszip.min.js', '_jszip_load');
+  if (!window.JSZip) throw new Error('JSZip não foi carregado corretamente');
   return (window._JSZip = window.JSZip);
 }
 
 export async function getJsPDF() {
   if (window._jsPDF) return window._jsPDF;
   if (window.jspdf && window.jspdf.jsPDF) return (window._jsPDF = window.jspdf.jsPDF);
-  await loadScript('/lib/jspdf.umd.min.js');
-  return (window._jsPDF = window.jspdf.jsPDF);
+  await loadScript('/lib/jspdf.umd.min.js', '_jspdf_load');
+  const ctor = window.jspdf?.jsPDF || window.jsPDF;
+  if (!ctor) throw new Error('jsPDF não foi carregado corretamente');
+  return (window._jsPDF = ctor);
 }
 
-function loadScript(src) {
-  return new Promise((resolve, reject) => {
+const scriptPromises = {};
+
+function loadScript(src, key) {
+  if (scriptPromises[key]) return scriptPromises[key];
+  scriptPromises[key] = new Promise((resolve, reject) => {
+    if (document.querySelector(`script[src="${src}"]`)) {
+      resolve();
+      return;
+    }
     const s = document.createElement('script');
     s.src = src;
     s.onload = resolve;
-    s.onerror = () => reject(new Error('Failed to load ' + src));
+    s.onerror = () => reject(new Error('Falha ao carregar ' + src));
     document.head.appendChild(s);
   });
+  return scriptPromises[key];
 }

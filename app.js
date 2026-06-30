@@ -856,6 +856,10 @@
 
   exportBtn.addEventListener('click', e => {
     e.stopPropagation();
+    if (!pdfDocument) {
+      showError('Carregue um PDF antes de exportar.');
+      return;
+    }
     openExportModal();
   });
   exportModalClose.addEventListener('click', closeExportModal);
@@ -891,6 +895,7 @@
         progressFill.style.width = '0%';
       }, 1500);
     } catch (err) {
+      progressFill.style.width = '100%';
       progressLabel.textContent = 'Erro ao exportar. Tente novamente.';
       console.error('[Export]', err);
     }

@@ -1,5 +1,4 @@
-import { getJSZip } from './utils.js';
-import { renderPageToDataURL, slugify, download } from './utils.js';
+import { getJSZip, renderPageToDataURL, slugify, download, formatPageLink } from './utils.js';
 
 function uniqueFilename(slug, existing) {
   let name = slug + '.md';
@@ -61,7 +60,7 @@ export async function exportObsidianVault(session) {
   // Índice/MOC do vault
   let index = `# ${title}\n\n## Folhas\n\n`;
   for (const nf of noteFiles) {
-    index += `- [[${nf.filename.replace(/\.md$/, '')}|${nf.noteName}]] — ${formatPageLink(nf.pages)}\n`;
+    index += `- [[${nf.filename.replace(/\.md$/, '')}|${nf.noteName}]] — ${formatPageLink(nf.pages, '')}\n`;
   }
   zip.file(`${baseSlug}.md`, index);
 
@@ -69,19 +68,4 @@ export async function exportObsidianVault(session) {
   const blob = await zip.generateAsync({ type: 'blob' });
   onProgress?.(100, 'Finalizando...');
   download(`${baseSlug}-vault.zip`, blob, 'application/zip');
-}
-
-function formatPageLink(nums) {
-  if (!nums || nums.length === 0) return 'Sem vínculo';
-  if (nums.length === 1) return `Pág. ${nums[0]}`;
-  const sorted = [...nums].sort((a, b) => a - b);
-  const ranges = [];
-  let start = sorted[0], prev = sorted[0];
-  for (let i = 1; i < sorted.length; i++) {
-    if (sorted[i] === prev + 1) { prev = sorted[i]; continue; }
-    ranges.push(start === prev ? `${start}` : `${start}-${prev}`);
-    start = prev = sorted[i];
-  }
-  ranges.push(start === prev ? `${start}` : `${start}-${prev}`);
-  return `Págs. ${ranges.join(', ')}`;
 }

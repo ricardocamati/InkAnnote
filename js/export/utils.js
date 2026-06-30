@@ -33,9 +33,9 @@ export function slugify(str) {
     .trim().replace(/\s+/g, '-');
 }
 
-export function formatPageLink(nums) {
+export function formatPageLink(nums, suffix = ' do PDF') {
   if (!nums || nums.length === 0) return 'Sem vínculo';
-  if (nums.length === 1) return `Pág. ${nums[0]} do PDF`;
+  if (nums.length === 1) return `Pág. ${nums[0]}${suffix}`;
   const sorted = [...nums].sort((a, b) => a - b);
   const ranges = [];
   let start = sorted[0], prev = sorted[0];
@@ -45,7 +45,29 @@ export function formatPageLink(nums) {
     start = prev = sorted[i];
   }
   ranges.push(start === prev ? `${start}` : `${start}-${prev}`);
-  return `Págs. ${ranges.join(', ')} do PDF`;
+  return `Págs. ${ranges.join(', ')}${suffix}`;
+}
+
+export function markdownToPlain(md, { keepUrls = false, collapseBlankLines = false } = {}) {
+  let text = md
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/\*\*(.+?)\*\*/g, '$1')
+    .replace(/\*(.+?)\*/g, '$1')
+    .replace(/`(.+?)`/g, '$1');
+
+  text = keepUrls
+    ? text.replace(/\[(.+?)\]\((.+?)\)/g, '$1 ($2)')
+    : text.replace(/\[(.+?)\]\((.+?)\)/g, '$1');
+
+  text = text
+    .replace(/^[-*]\s+/gm, '• ')
+    .replace(/^>\s+/gm, '> ');
+
+  if (collapseBlankLines) {
+    text = text.replace(/\n\s*\n/g, '\n');
+  }
+
+  return text;
 }
 
 export async function getJSZip() {

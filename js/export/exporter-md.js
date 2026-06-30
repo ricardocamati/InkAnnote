@@ -1,11 +1,4 @@
-import { download, slugify, formatPageLink } from './utils.js';
-
-function escapeHtml(str) {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-}
+import { download, slugify, formatPageLink, markdownToPlain } from './utils.js';
 
 function markdownToNotion(md) {
   // Notion importa MD como blocos; converte > quote para callout simples
@@ -13,17 +6,6 @@ function markdownToNotion(md) {
   html = html.replace(/\n/g, '\n');
   html = html.replace(/^\u003e\s*(.+)$/gm, (_, content) => `\n\n📎 *${content.trim()}*\n\n`);
   return html;
-}
-
-function markdownToPlain(md) {
-  return md
-    .replace(/^#{1,6}\s+/gm, '')
-    .replace(/\*\*(.+?)\*\*/g, '$1')
-    .replace(/\*(.+?)\*/g, '$1')
-    .replace(/`(.+?)`/g, '$1')
-    .replace(/\[(.+?)\]\((.+?)\)/g, '$1 ($2)')
-    .replace(/^[-*]\s+/gm, '• ')
-    .replace(/^\u003e\s+/gm, '> ');
 }
 
 export async function exportMarkdown(session, { mode } = {}) {
@@ -43,7 +25,7 @@ export async function exportMarkdown(session, { mode } = {}) {
     if (mode === 'notion') {
       content = markdownToNotion(content);
     } else if (mode === 'plain') {
-      content = markdownToPlain(content);
+      content = markdownToPlain(content, { keepUrls: true });
     }
 
     if (mode === 'obsidian') {

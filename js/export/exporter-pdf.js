@@ -1,22 +1,10 @@
-import { getJsPDF } from './utils.js';
-import { renderPageToDataURL, slugify, formatPageLink } from './utils.js';
+import { getJsPDF, renderPageToDataURL, slugify, formatPageLink, markdownToPlain } from './utils.js';
 
 const W = 210;
 const H = 297;
 const MARGIN_X = 10;
 const MARGIN_Y = 10;
 const CONTENT_W = W - MARGIN_X * 2;
-
-function markdownToPlain(md) {
-  return md
-    .replace(/^#{1,6}\s+/gm, '')
-    .replace(/\*\*(.+?)\*\*/g, '$1')
-    .replace(/\*(.+?)\*/g, '$1')
-    .replace(/`(.+?)`/g, '$1')
-    .replace(/\[(.+?)\]\((.+?)\)/g, '$1')
-    .replace(/^[-*]\s+/gm, '• ')
-    .replace(/\n\s*\n/g, '\n');
-}
 
 export async function exportPdfWithNotes(session, { includeAllSlides } = {}) {
   const { fileName, pdfDocument, notebookPages, onProgress } = session;
@@ -86,7 +74,7 @@ export async function exportPdfWithNotes(session, { includeAllSlides } = {}) {
         cursorY += 5;
         doc.setTextColor(0);
 
-        const plain = markdownToPlain(note.content || 'Sem conteúdo.');
+        const plain = markdownToPlain(note.content || 'Sem conteúdo.', { collapseBlankLines: true });
         doc.setFontSize(10);
         const lines = doc.splitTextToSize(plain, CONTENT_W);
         const lineHeight = 4.5;

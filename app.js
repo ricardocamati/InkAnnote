@@ -78,10 +78,6 @@
   const notesSidebar = $('notesSidebar');
   const sidebarToggle = $('sidebarToggle');
   const notesList = $('notesList');
-  const exportBtn = $('exportBtn');
-  const exportMenu = $('exportMenu');
-  const exportMarkdown = $('exportMarkdown');
-  const exportJSON = $('exportJSON');
   const themeToggle = $('themeToggle');
   const themeIconMoon = $('themeIconMoon');
   const themeIconSun = $('themeIconSun');
@@ -819,53 +815,73 @@
   }
 
   // ============================================================
-  // Exportação
+  // Exportação (modal com módulo ESM carregado via dynamic import)
   // ============================================================
-  function download(filename, content, type) {
-    const blob = new Blob([content], { type });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
+  const exportBtn = $('exportBtn');
+  const exportModal = $('exportModal');
+  const exportModalClose = $('exportModalClose');
+  const exportProgress = $('exportProgress');
+  const progressFill = $('progressFill');
+  const progressLabel = $('progressLabel');
+  let exportMod = null;
+
+  async function loadExportMod() {
+    if (exportMod) return exportMod;
+    exportMod = await import('./js/export/index.js');
+    return exportMod;
   }
 
-  function exportAsMarkdown() {
-    const title = pdfFile ? pdfFile.name : 'anotacoes';
-    let md = `# Anotações — ${title}\n\n`;
-    notebookPages.forEach((p, i) => {
-      md += `---\n\n`;
-      md += `## Folha ${i + 1} — ${formatPageLink(p.linkedPdfPages).replace(/ do PDF$/, '')}\n\n`;
-      md += `_Criada em ${new Date(p.createdAt).toLocaleString('pt-BR')}_\n\n`;
-      md += `${p.content || ''}\n\n`;
-    });
-    download(title.replace(/\.pdf$/i, '') + '-anotacoes.md', md, 'text/markdown');
+  function openExportModal() {
+    exportProgress.classList.add('hidden');
+    progressFill.style.width = '0%';
+    exportModal.classList.remove('hidden');
   }
 
-  function exportAsJSON() {
-    const session = {
-      fileName: pdfFile ? pdfFile.name : null,
-      exportedAt: new Date().toISOString(),
-      notebookPages,
-    };
-    download((pdfFile ? pdfFile.name.replace(/\.pdf$/i, '') : 'anotacoes') + '.json',
-      JSON.stringify(session, null, 2), 'application/json');
+  function closeExportModal() {
+    exportModal.classList.add('hidden');
   }
 
   exportBtn.addEventListener('click', e => {
     e.stopPropagation();
-    exportMenu.classList.toggle('hidden');
+    openExportModal();
   });
-  document.addEventListener('click', e => {
-    if (!exportBtn.contains(e.target) && !exportMenu.contains(e.target)) {
-      exportMenu.classList.add('hidden');
+  exportModalClose.addEventListener('click', closeExportModal);
+  exportModal.addEventListener('click', e => {
+    if (e.target === exportModal) closeExportModal();
+  });
+
+  exportModal.addEventListener('click', async e => {
+    const btn = e.target.closest('[data-export]');
+    if (!btn) return;
+    const type = btn.dataset.export;
+
+    exportProgress.classList.remove('hidden');
+    progressFill.style.width = '10%';
+    progressLabel.textContent = 'Preparando...';
+
+    try {
+      const mod = await loadExportMod();
+      await mod.exportTo(type, {
+        fileName: pdfFile?.name || 'anotacoes.pdf',
+        pdfDocument,
+        notebookPages,
+        onProgress: (pct, label) => {
+          progressFill.style.width = pct + '%';
+          progressLabel.textContent = label;
+        },
+      });
+      progressFill.style.width = '100%';
+      progressLabel.textContent = 'Concluído';
+      setTimeout(() => {
+        closeExportModal();
+        exportProgress.classList.add('hidden');
+        progressFill.style.width = '0%';
+      }, 1500);
+    } catch (err) {
+      progressLabel.textContent = 'Erro ao exportar. Tente novamente.';
+      console.error('[Export]', err);
     }
   });
-  exportMarkdown.addEventListener('click', () => { exportAsMarkdown(); exportMenu.classList.add('hidden'); });
-  exportJSON.addEventListener('click', () => { exportAsJSON(); exportMenu.classList.add('hidden'); });
 
   // ============================================================
   // Divisor redimensionável
@@ -943,7 +959,7 @@
     }
     if (ctrl && key === 'e') {
       e.preventDefault();
-      exportAsMarkdown();
+      openExportModal();
       return;
     }
   });

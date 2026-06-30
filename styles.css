@@ -172,30 +172,62 @@ html, body {
 
 /* Dropdown */
 .dropdown { position: relative; }
-.dropdown-menu {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
-  background: var(--bg-card);
-  border: 1px solid var(--divider);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
-  min-width: 150px;
-  z-index: 100;
-  overflow: hidden;
+
+/* Modal de exportação */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
-.dropdown-item {
+.modal-box {
+  background: var(--bg-card);
+  border-radius: 12px;
+  width: min(520px, 95vw);
+  max-height: 85vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  display: flex;
+  flex-direction: column;
+}
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 24px 12px;
+  border-bottom: 1px solid var(--divider);
+}
+.modal-header h2 { margin: 0; font-size: 18px; }
+
+.export-options { padding: 16px 24px; display: flex; flex-direction: column; gap: 20px; }
+.export-group h3 { margin: 0 0 8px; font-size: 13px; color: var(--text-muted); font-weight: 600; }
+.export-option {
   width: 100%;
   text-align: left;
-  padding: 10px 14px;
-  border: none;
-  background: none;
-  font-family: inherit;
-  font-size: 13px;
+  background: var(--bg-toolbar);
+  border: 1px solid var(--divider);
+  border-radius: 8px;
+  padding: 12px 16px;
   cursor: pointer;
-  color: var(--text-primary);
+  margin-bottom: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  transition: border-color 0.15s, background 0.15s;
+  font-family: inherit;
 }
-.dropdown-item:hover { background: var(--bg-toolbar); }
+.export-option:hover { border-color: var(--accent); background: var(--linked-indicator); }
+.opt-title { font-size: 14px; font-weight: 600; color: var(--text-primary); }
+.opt-desc { font-size: 12px; color: var(--text-muted); }
+.opt-warn { font-size: 11px; color: #e67e22; }
+
+.export-progress { padding: 16px 24px; border-top: 1px solid var(--divider); }
+.progress-bar { height: 6px; background: var(--divider); border-radius: 3px; overflow: hidden; }
+.progress-fill { height: 100%; background: var(--accent); width: 0%; transition: width 300ms ease; }
+#progressLabel { font-size: 12px; color: var(--text-muted); margin-top: 6px; display: block; }
 
 /* Workspace */
 .workspace-screen { height: 100vh; overflow: hidden; display: flex; flex-direction: column; }

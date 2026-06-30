@@ -49,10 +49,6 @@
         </button>
         <div class="dropdown">
           <button id="exportBtn" class="btn btn-secondary btn-small" title="Exportar (Ctrl E)">Exportar ▾</button>
-          <div id="exportMenu" class="dropdown-menu hidden">
-            <button id="exportMarkdown" class="dropdown-item">⬇ Markdown (.md)</button>
-            <button id="exportJSON" class="dropdown-item">⬇ JSON (.json)</button>
-          </div>
         </div>
       </div>
     </header>
@@ -125,6 +121,52 @@
         </footer>
       </section>
     </main>
+  </div>
+
+  <!-- Modal de exportação -->
+  <div id="exportModal" class="modal-overlay hidden">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h2>Exportar Anotações</h2>
+        <button id="exportModalClose" class="btn btn-ghost btn-icon">✕</button>
+      </div>
+      <div class="export-options">
+        <div class="export-group">
+          <h3>Markdown</h3>
+          <button class="export-option" data-export="md-notion">
+            <span class="opt-title">Para Notion</span>
+            <span class="opt-desc">Arquivo .md importável no Notion. Sem imagens de slide.</span>
+          </button>
+          <button class="export-option" data-export="md-plain">
+            <span class="opt-title">Markdown simples</span>
+            <span class="opt-desc">Arquivo .md genérico. Funciona em qualquer editor.</span>
+          </button>
+        </div>
+        <div class="export-group">
+          <h3>Obsidian</h3>
+          <button class="export-option" data-export="obsidian-zip">
+            <span class="opt-title">Vault Obsidian (.zip)</span>
+            <span class="opt-desc">ZIP com .md + imagens dos slides. Extraia e arraste para seu vault.</span>
+          </button>
+        </div>
+        <div class="export-group">
+          <h3>PDF</h3>
+          <button class="export-option" data-export="pdf-notes">
+            <span class="opt-title">Slides vinculados + anotações</span>
+            <span class="opt-desc">Apenas os slides com anotações associadas.</span>
+          </button>
+          <button class="export-option" data-export="pdf-full">
+            <span class="opt-title">PDF completo com anotações</span>
+            <span class="opt-desc">Todos os slides do PDF original + anotações intercaladas.</span>
+            <span class="opt-warn">Pode demorar para PDFs grandes</span>
+          </button>
+        </div>
+      </div>
+      <div id="exportProgress" class="export-progress hidden">
+        <div class="progress-bar"><div id="progressFill" class="progress-fill"></div></div>
+        <span id="progressLabel">Preparando...</span>
+      </div>
+    </div>
   </div>
 
   <!-- PDF.js CDN -->

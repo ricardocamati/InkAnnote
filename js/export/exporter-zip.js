@@ -28,7 +28,7 @@ export async function exportObsidianVault(session) {
     onProgress?.(Math.round((i / pageList.length) * 60) + 5, `Renderizando slide ${pageNum}...`);
     const dataURL = await renderPageToDataURL(pdfDocument, pageNum, 1.5);
     const base64 = dataURL.split(',')[1];
-    zip.file(`attachments/slide-pag-${pageNum}.png`, base64, { base64: true });
+    zip.file(`attachments/slide-pag-${pageNum}.jpg`, base64, { base64: true });
   }
 
   onProgress?.(70, 'Criando arquivos de anotação...');
@@ -49,7 +49,7 @@ export async function exportObsidianVault(session) {
     md += `---\n\n# ${noteName}\n\n`;
 
     for (const p of pages) {
-      md += `![[attachments/slide-pag-${p}.png]]\n`;
+      md += `![[attachments/slide-pag-${p}.jpg]]\n`;
     }
     md += `\n${page.content || '_Sem conteúdo_'}\n`;
 

@@ -31,7 +31,7 @@ export async function exportMarkdown(session, { mode } = {}) {
     if (mode === 'obsidian') {
       const pages = page.linkedPdfPages || [];
       for (const p of pages) {
-        md += `![[slide-pag-${p}.png]]\n`;
+        md += `![[slide-pag-${p}.jpg]]\n`;
       }
       md += '\n';
     }

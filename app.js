@@ -10,6 +10,7 @@
   const MIN_PANEL_PX = 320;
   const RESIZER_WIDTH_PCT = 0.6;
   const MAX_DPR = 3;
+  const RENDER_QUALITY = 1.8;
   const CROP_OFFSCREEN_SCALE = 2;
   const CROP_THRESHOLD = 240;
   const CROP_MARGIN = 0.97;
@@ -458,8 +459,9 @@
     const dispH = Math.max(1, Math.floor((cropH / offScale) * finalScale));
 
     const dpr = Math.min(window.devicePixelRatio || 1, MAX_DPR);
-    pdfCanvas.width = dispW * dpr;
-    pdfCanvas.height = dispH * dpr * rows;
+    const quality = dpr * RENDER_QUALITY;
+    pdfCanvas.width = Math.floor(dispW * quality);
+    pdfCanvas.height = Math.floor(dispH * quality * rows);
     pdfCanvas.style.width = dispW + 'px';
     pdfCanvas.style.height = (dispH * rows) + 'px';
 
@@ -467,7 +469,7 @@
     ctx.clearRect(0, 0, pdfCanvas.width, pdfCanvas.height);
 
     const destW = pdfCanvas.width;
-    const destH = dispH * dpr;
+    const destH = Math.floor(dispH * quality);
 
     if (ocL) {
       ctx.drawImage(ocL.canvas,

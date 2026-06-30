@@ -294,6 +294,8 @@
   }
 
   // Expõe globalmente para testes Selenium
+  window.getTotalPages = () => totalPages;
+  window.getNotebookPages = () => notebookPages;
   window.setEditorMarkdown = setEditorMarkdown;
   window.getEditorMarkdown = getEditorMarkdown;
   window.createTestNote = (name, md, pages = null) => {

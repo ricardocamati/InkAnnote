@@ -44,9 +44,15 @@
   let lastPoint = null;
   let saveTimeout = null;
   let renderTimeout = null;
-  let previewMode = false;
   let renderToken = 0;
   let lastRenderedPair = null;
+  let milkdownEditor = null;
+  let milkdownReady = false;
+  let getMarkdownFn = null;
+  let replaceAllFn = null;
+
+  // PDF.js worker
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
 
   // ============================================================
   // DOM refs
@@ -77,8 +83,6 @@
   const pageLinkEdit = $('pageLinkEdit');
   const pageLinkInput = $('pageLinkInput');
   const noteEditor = $('noteEditor');
-  const notePreview = $('notePreview');
-  const previewToggle = $('previewToggle');
   const wordCount = $('wordCount');
   const saveStatus = $('saveStatus');
   const notePrev = $('notePrev');
@@ -130,7 +134,7 @@
   }
 
   function updateWordCount() {
-    const text = noteEditor.value.trim();
+    const text = (milkdownReady ? getEditorMarkdown() : '').trim();
     const count = text ? text.split(/\s+/).length : 0;
     wordCount.textContent = `${count} palavra${count !== 1 ? 's' : ''}`;
   }
@@ -180,12 +184,12 @@
   }
 
   function focusEditor() {
-    if (previewMode) {
-      setTimeout(() => previewToggle.focus(), 50);
-      return;
-    }
     if (currentNoteIndex < 0) return;
-    setTimeout(() => noteEditor.focus(), 50);
+    setTimeout(() => {
+      if (milkdownReady && milkdownEditor) {
+        noteEditor.focus();
+      }
+    }, 50);
   }
 
   function pairKey(start) {
@@ -238,12 +242,28 @@
     setSaveStatus(`Salvo às ${formatDate()}`);
   }
 
+  function getEditorMarkdown() {
+    if (!milkdownReady || !milkdownEditor || !getMarkdownFn) return '';
+    try {
+      return milkdownEditor.action(getMarkdownFn()) || '';
+    } catch {
+      return '';
+    }
+  }
+
+  function setEditorMarkdown(md) {
+    if (!milkdownReady || !milkdownEditor || !replaceAllFn) return;
+    try {
+      milkdownEditor.action(replaceAllFn(md || ''));
+    } catch { /* ignore */ }
+  }
+
   function scheduleSave() {
     setSaveStatus('Salvando...');
     clearTimeout(saveTimeout);
     saveTimeout = setTimeout(() => {
       if (currentNoteIndex >= 0) {
-        notebookPages[currentNoteIndex].content = noteEditor.value;
+        notebookPages[currentNoteIndex].content = getEditorMarkdown();
         notebookPages[currentNoteIndex].updatedAt = new Date().toISOString();
       }
       saveSession();
@@ -499,13 +519,11 @@
     notebookEmpty.classList.add('hidden');
     notebookPage.classList.remove('hidden');
     const page = notebookPages[currentNoteIndex];
-    noteEditor.value = page.content || '';
+    setEditorMarkdown(page.content || '');
     pageLinkLabel.textContent = formatPageLink(page.linkedPdfPages);
     noteIndex.textContent = currentNoteIndex + 1;
     noteTotal.textContent = notebookPages.length;
     updateWordCount();
-    if (previewMode) updatePreview();
-    setPreviewMode(previewMode);
     setSaveStatus(`Salvo às ${formatDate()}`);
   }
 
@@ -527,7 +545,12 @@
   }
 
   newNotePage.addEventListener('click', () => createNotePage());
-  createFirstPage.addEventListener('click', () => createNotePage());
+  createFirstPage.addEventListener('click', () => {
+    createNotePage();
+    initMilkdown().catch(err => {
+      console.error('[PDFNotes] Falha ao inicializar Milkdown:', err);
+    });
+  });
 
   function goToLinkedPage(targetIdx) {
     const resolved = normalizeNoteIndex(targetIdx);
@@ -543,8 +566,11 @@
     if (notebookPages.length === 0) {
       createNotePage();
     } else {
-      focusEditor();
+      renderNotebook();
     }
+    initMilkdown().catch(err => {
+      console.error('[PDFNotes] Falha ao inicializar Milkdown:', err);
+    });
   }
 
   function goToPdfPage(pageNum) {
@@ -597,33 +623,75 @@
   pageLinkInput.addEventListener('blur', () => saveLink());
 
   // ============================================================
-  // Preview Markdown
+  // Editor Milkdown (WYSIWYG markdown) — carregado via dynamic import
   // ============================================================
-  function updatePreview() {
-    notePreview.innerHTML = marked.parse(noteEditor.value || '');
+  let milkdownMods = null;
+
+  async function loadMilkdownModules() {
+    if (milkdownMods) return milkdownMods;
+    const [core, preset, pluginListener, utils] = await Promise.all([
+      import('https://esm.sh/@milkdown/core@7.21.2'),
+      import('https://esm.sh/@milkdown/preset-commonmark@7.21.2'),
+      import('https://esm.sh/@milkdown/plugin-listener@7.21.2'),
+      import('https://esm.sh/@milkdown/utils@7.21.2'),
+    ]);
+    milkdownMods = {
+      Editor: core.Editor,
+      defaultValueCtx: core.defaultValueCtx,
+      rootCtx: core.rootCtx,
+      commonmark: preset.commonmark,
+      listener: pluginListener.listener,
+      listenerCtx: pluginListener.listenerCtx,
+      getMarkdown: utils.getMarkdown,
+      replaceAll: utils.replaceAll,
+    };
+    return milkdownMods;
   }
 
-  function setPreviewMode(active) {
-    previewMode = active;
-    previewToggle.setAttribute('aria-pressed', previewMode);
-    previewToggle.classList.toggle('active', previewMode);
-    notePreview.className = 'note-preview ' + (previewMode ? 'visible' : 'live');
-    noteEditor.classList.toggle('hidden', previewMode);
-    updatePreview();
+  async function initMilkdown() {
+    if (milkdownReady) return;
+
+    // Espera o notebookPage ficar visível (setNoteIndex tem transition de 150ms)
+    let tries = 0;
+    while (notebookPage.classList.contains('hidden') && tries < 20) {
+      await new Promise(r => setTimeout(r, 50));
+      tries++;
+    }
+    if (notebookPage.classList.contains('hidden')) {
+      console.warn('[PDFNotes] notebookPage ainda hidden após retry, abortando Milkdown');
+      return;
+    }
+
+    console.log('[PDFNotes] Inicializando Milkdown...');
+    const { Editor, defaultValueCtx, rootCtx, commonmark, listener, listenerCtx, getMarkdown: gm, replaceAll: ra } = await loadMilkdownModules();
+    getMarkdownFn = gm;
+    replaceAllFn = ra;
+
+    try {
+      milkdownEditor = await Editor.make()
+        .config(ctx => {
+          ctx.set(rootCtx, noteEditor);
+          ctx.set(defaultValueCtx, notebookPages[currentNoteIndex]?.content || '');
+          ctx.get(listenerCtx).markdownUpdated(() => {
+            scheduleSave();
+          });
+        })
+        .use(commonmark)
+        .use(listener)
+        .create();
+
+      milkdownReady = true;
+      console.log('[PDFNotes] Milkdown pronto');
+      if (currentNoteIndex >= 0) {
+        setEditorMarkdown(notebookPages[currentNoteIndex].content || '');
+      }
+      updateWordCount();
+      focusEditor();
+    } catch (err) {
+      console.error('[PDFNotes] Erro ao criar Milkdown:', err);
+      milkdownEditor = null;
+    }
   }
-
-  function togglePreview() {
-    setPreviewMode(!previewMode);
-    if (!previewMode) focusEditor();
-  }
-
-  previewToggle.addEventListener('click', togglePreview);
-
-  // Único handler de input do editor — salva + atualiza preview
-  noteEditor.addEventListener('input', () => {
-    scheduleSave();
-    updatePreview();
-  });
 
   // ============================================================
   // Toolbar ferramentas
@@ -835,7 +903,9 @@
   // Atalhos de teclado
   // ============================================================
   document.addEventListener('keydown', e => {
-    if (document.activeElement === noteEditor || document.activeElement === pageLinkInput) return;
+    const ae = document.activeElement;
+    const inEditor = ae && (ae === noteEditor || noteEditor.contains(ae));
+    if (inEditor || ae === pageLinkInput) return;
 
     const alt = e.altKey;
     const ctrl = e.ctrlKey || e.metaKey;
@@ -867,11 +937,6 @@
     if (ctrl && key === 'e') {
       e.preventDefault();
       exportAsMarkdown();
-      return;
-    }
-    if (ctrl && key === 'p') {
-      e.preventDefault();
-      togglePreview();
       return;
     }
     if (!ctrl && !alt && !shift && key === 'v') {
@@ -910,6 +975,9 @@
       if (pdfDocument) {
         renderPages();
         renderNotebook();
+        initMilkdown().catch(err => {
+          console.error('[PDFNotes] Falha ao inicializar Milkdown:', err);
+        });
       }
       cleanup();
     };

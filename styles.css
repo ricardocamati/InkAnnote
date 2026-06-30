@@ -716,6 +716,50 @@ html, body {
   gap: 12px;
 }
 
+.create-note-banner { display: none; }
+.create-note-banner.visible {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: var(--bg-toolbar);
+  border: 1px solid var(--divider);
+  border-left: 4px solid var(--accent);
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin: 12px 12px 8px;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.banner-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.note-selector { display: none; }
+.note-selector.visible {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px 4px;
+  font-size: 13px;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--divider);
+  margin: 0 12px;
+}
+
+.note-selector select {
+  background: var(--bg-editor);
+  color: var(--text-primary);
+  border: 1px solid var(--divider);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 13px;
+  min-width: 140px;
+}
+
 /* Banner */
 /* Responsividade básica */
 @media (max-width: 1024px) {

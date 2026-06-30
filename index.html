@@ -102,6 +102,17 @@
           </aside>
 
           <div class="editor-wrapper">
+            <div id="create-note-banner" class="create-note-banner hidden">
+              <span class="banner-label"></span>
+              <div class="banner-actions">
+                <button class="btn btn-primary btn-small btn-create">+ Criar anotação</button>
+                <button class="btn btn-ghost btn-small btn-dismiss">Ignorar</button>
+              </div>
+            </div>
+            <div id="note-selector" class="note-selector hidden">
+              <span class="selector-label">Notas para este par:</span>
+              <select class="selector-select"></select>
+            </div>
             <div id="notebookEmpty" class="notebook-empty">
               <p>Nenhuma anotação ainda</p>
               <button id="createFirstPage" class="btn btn-primary">Criar primeira folha</button>

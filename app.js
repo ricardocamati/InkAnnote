@@ -85,6 +85,9 @@
   const themeIconSun = $('themeIconSun');
   const workspace = $('workspace');
   const resizer = $('resizer');
+  const createNoteBanner = $('create-note-banner');
+  const noteSelector = $('note-selector');
+  const noteSelectorSelect = noteSelector ? noteSelector.querySelector('select') : null;
 
   // ============================================================
   // Helpers
@@ -166,6 +169,12 @@
     if (idx < 0) return 0;
     if (idx >= notebookPages.length) return notebookPages.length - 1;
     return idx;
+  }
+
+  function openNote(noteId, focus = true) {
+    const idx = notebookPages.findIndex(n => n.id === noteId);
+    if (idx < 0) return;
+    setNoteIndex(idx, focus);
   }
 
   function focusEditor() {
@@ -294,11 +303,7 @@
   }
 
   // Expõe globalmente para testes Selenium
-  window.getTotalPages = () => totalPages;
-  window.getNotebookPages = () => notebookPages;
-  window.setEditorMarkdown = setEditorMarkdown;
-  window.getEditorMarkdown = getEditorMarkdown;
-  window.createTestNote = (name, md, pages = null) => {
+  function createTestNote(name, md, pages = null) {
     if (notebookPages.length === 0) {
       notebookEmpty.classList.add('hidden');
       notebookPage.classList.remove('hidden');
@@ -307,11 +312,20 @@
     createNotePage(pages);
     const page = notebookPages[currentNoteIndex];
     if (name) page.name = name;
-    page.content = (md || '').replace(/\\n/g, '\n');
+    page.content = (md || '').replace(/\\\\n/g, '\n');
     renderNotebook();
     saveSession();
     return page;
-  };
+  }
+
+  window.getTotalPages = () => totalPages;
+  window.getNotebookPages = () => notebookPages;
+  window.getCurrentPageStart = () => currentPageStart;
+  window.goToPdfPage = goToPdfPage;
+  window.syncNoteToCurrentPair = syncNoteToCurrentPair;
+  window.createTestNote = createTestNote;
+  window.setEditorMarkdown = setEditorMarkdown;
+  window.getEditorMarkdown = getEditorMarkdown;
 
   async function initMilkdown() {
     if (milkdownReady) return;
@@ -555,16 +569,16 @@
       styleW = pdfW;
       styleH = dispH;
 
-      pdfCanvas.width = Math.floor(pdfW * quality);
-      pdfCanvas.height = Math.floor(dispH * quality);
+      pdfCanvas.width = Math.floor(pdfW * RENDER_QUALITY);
+      pdfCanvas.height = Math.floor(dispH * RENDER_QUALITY);
       pdfCanvas.style.width = styleW + 'px';
       pdfCanvas.style.height = styleH + 'px';
 
       const ctx = pdfCanvas.getContext('2d');
       ctx.clearRect(0, 0, pdfCanvas.width, pdfCanvas.height);
 
-      const destW = Math.floor(dispW * quality);
-      const destH = Math.floor(dispH * quality);
+      const destW = Math.floor(dispW * RENDER_QUALITY);
+      const destH = Math.floor(dispH * RENDER_QUALITY);
 
       if (ocL) {
         ctx.drawImage(ocL.canvas,
@@ -592,8 +606,8 @@
       styleW = dispW;
       styleH = dispH * rows;
 
-      pdfCanvas.width = Math.floor(dispW * quality);
-      pdfCanvas.height = Math.floor(dispH * quality * rows);
+      pdfCanvas.width = Math.floor(dispW * RENDER_QUALITY);
+      pdfCanvas.height = Math.floor(dispH * RENDER_QUALITY * rows);
       pdfCanvas.style.width = styleW + 'px';
       pdfCanvas.style.height = styleH + 'px';
 
@@ -601,7 +615,7 @@
       ctx.clearRect(0, 0, pdfCanvas.width, pdfCanvas.height);
 
       const destW = pdfCanvas.width;
-      const destH = Math.floor(dispH * quality);
+      const destH = Math.floor(dispH * RENDER_QUALITY);
 
       if (ocL) {
         ctx.drawImage(ocL.canvas,
@@ -638,18 +652,148 @@
   function changePage(delta) {
     const newStart = currentPageStart + delta * 2;
     if (newStart < 1 || newStart > totalPages) return;
-    currentPageStart = newStart;
+    goToPdfPage(newStart);
+  }
+
+  function goToPdfPage(newPage) {
+    if (!pdfDocument || newPage < 1 || newPage > totalPages) return;
+
+    // Esconde banner/seletor da página anterior
+    hideCreateNoteBanner();
+    hideNoteSelector();
+
+    // Salva nota atual antes de trocar
+    flushSave();
+
+    currentPageStart = newPage;
     renderPages().then(() => {
-      const idx = notebookPages.findIndex(p =>
-        (p.linkedPdfPages || []).some(n => n === currentPageStart || n === currentPageStart + 1)
-      );
-      if (idx >= 0 && idx !== currentNoteIndex) {
-        setNoteIndex(idx, true);
-      } else {
-        focusEditor();
-      }
+      syncNoteToCurrentPair();
       saveSession();
     });
+  }
+
+  function syncNoteToCurrentPair() {
+    if (!pdfDocument) return;
+    if (currentNoteIndex >= 0) flushSave();
+
+    const left = currentPageStart;
+    const right = currentPageStart + 1 <= totalPages ? currentPageStart + 1 : null;
+    const relevant = [left, right].filter(Boolean);
+
+    const linked = notebookPages.filter(note =>
+      (note.linkedPdfPages || []).some(p => relevant.includes(p))
+    );
+
+    if (linked.length === 1) {
+      openNote(linked[0].id, false);
+      hideNoteSelector();
+      focusEditor();
+    } else if (linked.length > 1) {
+      openNote(linked[0].id, false);
+      updateNoteSelector(linked);
+      focusEditor();
+    } else {
+      hideNoteSelector();
+      showCreateNotePrompt(left, right);
+    }
+  }
+
+  function hideNoteSelector() {
+    if (!noteSelector) return;
+    noteSelector.classList.remove('visible');
+    noteSelector.classList.add('hidden');
+  }
+
+  function hideCreateNoteBanner() {
+    if (!createNoteBanner) return;
+    createNoteBanner.classList.remove('visible');
+    createNoteBanner.classList.add('hidden');
+  }
+
+  function showCreateNoteBanner() {
+    if (!createNoteBanner) return;
+    createNoteBanner.classList.remove('hidden');
+    createNoteBanner.classList.add('visible');
+  }
+
+  function showNoteSelector() {
+    if (!noteSelector) return;
+    noteSelector.classList.remove('hidden');
+    noteSelector.classList.add('visible');
+  }
+
+  function updateNoteSelector(linkedNotes) {
+    if (!noteSelector || !noteSelectorSelect) return;
+    showNoteSelector();
+    const currentId = notebookPages[currentNoteIndex]?.id;
+    noteSelectorSelect.innerHTML = '';
+    for (const note of linkedNotes) {
+      const opt = document.createElement('option');
+      opt.value = note.id;
+      opt.textContent = note.name?.trim() || suggestNoteName(note.linkedPdfPages);
+      noteSelectorSelect.appendChild(opt);
+    }
+    noteSelectorSelect.value = currentId || linkedNotes[0].id;
+    noteSelectorSelect.onchange = () => {
+      openNote(noteSelectorSelect.value, true);
+    };
+  }
+
+  function showCreateNotePrompt(leftPage, rightPage) {
+    if (!createNoteBanner) return;
+    const label = rightPage
+      ? `páginas ${leftPage}–${rightPage}`
+      : `página ${leftPage}`;
+    const bannerLabel = createNoteBanner.querySelector('.banner-label');
+    if (bannerLabel) bannerLabel.textContent = `Nenhuma anotação para as ${label}`;
+
+    showCreateNoteBanner();
+
+    const btnCreate = createNoteBanner.querySelector('.btn-create');
+    const btnDismiss = createNoteBanner.querySelector('.btn-dismiss');
+
+    if (btnCreate) {
+      btnCreate.onclick = () => {
+        hideCreateNoteBanner();
+        createNoteLinkedToPair(leftPage, rightPage);
+      };
+    }
+    if (btnDismiss) {
+      btnDismiss.onclick = () => {
+        hideCreateNoteBanner();
+      };
+    }
+  }
+
+  function createNoteLinkedToPair(leftPage, rightPage) {
+    const linkedPages = rightPage ? [leftPage, rightPage] : [leftPage];
+    const pairLabel = rightPage ? `${leftPage}-${rightPage}` : `${leftPage}`;
+
+    const newNote = {
+      id: uuid(),
+      name: `Anotação — págs. ${pairLabel}`,
+      content: '',
+      linkedPdfPages: linkedPages,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    notebookPages.push(newNote);
+    setNoteIndex(notebookPages.length - 1);
+    refreshNotesList();
+    saveSession();
+  }
+
+  function flushSave() {
+    if (saveTimeout) {
+      clearTimeout(saveTimeout);
+      saveTimeout = null;
+      if (currentNoteIndex >= 0) {
+        notebookPages[currentNoteIndex].content = getEditorMarkdown();
+        notebookPages[currentNoteIndex].updatedAt = new Date().toISOString();
+      }
+      saveSession();
+    }
   }
 
   pdfPrev.addEventListener('click', () => { if (!pdfPrev.disabled) changePage(-1); });

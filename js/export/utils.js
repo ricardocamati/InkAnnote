@@ -50,12 +50,24 @@ export function formatPageLink(nums) {
 
 export async function getJSZip() {
   if (window._JSZip) return window._JSZip;
-  const mod = await import('https://esm.sh/jszip@3.10.1');
-  return (window._JSZip = mod.default);
+  if (window.JSZip) return (window._JSZip = window.JSZip);
+  await loadScript('/lib/jszip.min.js');
+  return (window._JSZip = window.JSZip);
 }
 
 export async function getJsPDF() {
   if (window._jsPDF) return window._jsPDF;
-  const mod = await import('https://esm.sh/jspdf@2.5.1');
-  return (window._jsPDF = mod.jsPDF);
+  if (window.jspdf && window.jspdf.jsPDF) return (window._jsPDF = window.jspdf.jsPDF);
+  await loadScript('/lib/jspdf.umd.min.js');
+  return (window._jsPDF = window.jspdf.jsPDF);
+}
+
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = src;
+    s.onload = resolve;
+    s.onerror = () => reject(new Error('Failed to load ' + src));
+    document.head.appendChild(s);
+  });
 }

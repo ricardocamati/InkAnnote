@@ -40,7 +40,7 @@
   let replaceAllFn = null;
 
   // PDF.js worker
-  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+  pdfjsLib.GlobalWorkerOptions.workerSrc = '/lib/pdf.worker.min.js';
 
   // ============================================================
   // DOM refs

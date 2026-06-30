@@ -7,10 +7,6 @@
   const DEBOUNCE_RENDER_MS = 200;
   const SAVE_TIMEOUT_MS = 400;
   const NOTE_TRANSITION_MS = 150;
-  const OVERLAY_ERASER_WIDTH = 16;
-  const OVERLAY_HIGHLIGHT_WIDTH = 18;
-  const OVERLAY_PEN_WIDTH = 3;
-  const OVERLAY_HIGHLIGHT_ALPHA = '88';
   const MIN_PANEL_PX = 320;
   const RESIZER_WIDTH_PCT = 0.6;
   const MAX_DPR = 3;
@@ -21,13 +17,8 @@
   const STORAGE_KEY = 'pdfnotes_session';
   const THEME_KEY = 'pdfnotes_theme';
   const SPLIT_KEY = 'pdfnotes_split';
-
-  const TOOLS = {
-    SELECT: 'select',
-    HIGHLIGHT: 'highlight',
-    PEN: 'pen',
-    ERASER: 'eraser',
-  };
+  const PDF_DB_NAME = 'pdfnotes_db';
+  const PDF_STORE = 'pdf';
 
   // ============================================================
   // Estado
@@ -38,10 +29,6 @@
   let totalPages = 0;
   let notebookPages = [];
   let currentNoteIndex = -1;
-  let activeTool = TOOLS.SELECT;
-  let toolColor = '#FFD700';
-  let isDrawing = false;
-  let lastPoint = null;
   let saveTimeout = null;
   let renderTimeout = null;
   let renderToken = 0;
@@ -70,7 +57,6 @@
   const pdfLoading = $('pdfLoading');
   const pdfContainer = $('pdfContainer');
   const pdfCanvas = $('pdfCanvasLeft');
-  const drawingOverlay = $('drawingOverlay');
   const pdfPrev = $('pdfPrev');
   const pdfNext = $('pdfNext');
   const pdfPagesLabel = $('pdfPagesLabel');
@@ -92,8 +78,6 @@
   const notesSidebar = $('notesSidebar');
   const sidebarToggle = $('sidebarToggle');
   const notesList = $('notesList');
-  const toolBtns = document.querySelectorAll('.tool-btn');
-  const colorPicker = $('colorPicker');
   const exportBtn = $('exportBtn');
   const exportMenu = $('exportMenu');
   const exportMarkdown = $('exportMarkdown');
@@ -103,11 +87,6 @@
   const themeIconSun = $('themeIconSun');
   const workspace = $('workspace');
   const resizer = $('resizer');
-  const restoreBanner = $('restoreBanner');
-  const restoreYes = $('restoreYes');
-  const restoreNo = $('restoreNo');
-
-  const overlayCtx = drawingOverlay.getContext('2d');
 
   // ============================================================
   // Helpers
@@ -236,6 +215,53 @@
   themeToggle.addEventListener('click', toggleTheme);
 
   // ============================================================
+  // IndexedDB — armazenamento do PDF (Blob)
+  // ============================================================
+  function openPdfDB() {
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open(PDF_DB_NAME, 1);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains(PDF_STORE)) {
+          db.createObjectStore(PDF_STORE);
+        }
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  async function savePdfToDB(blob) {
+    const db = await openPdfDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(PDF_STORE, 'readwrite');
+      tx.objectStore(PDF_STORE).put(blob, 'currentPdf');
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  }
+
+  async function loadPdfFromDB() {
+    const db = await openPdfDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(PDF_STORE, 'readonly');
+      const req = tx.objectStore(PDF_STORE).get('currentPdf');
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  async function clearPdfDB() {
+    const db = await openPdfDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(PDF_STORE, 'readwrite');
+      tx.objectStore(PDF_STORE).delete('currentPdf');
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  }
+
+  // ============================================================
   // Persistência
   // ============================================================
   function saveSession() {
@@ -349,6 +375,10 @@
       await renderPages();
       pdfLoading.classList.add('hidden');
       pdfContainer.classList.remove('hidden');
+
+      // Salva o PDF no IndexedDB e a sessão no localStorage
+      savePdfToDB(file).catch(err => console.error('[PDFNotes] Erro ao salvar PDF no DB:', err));
+
       maybeCreateDefaultPage();
     } catch (err) {
       console.error('[PDFNotes] Falha ao carregar PDF:', err);
@@ -461,9 +491,6 @@
     const linked = [left, right].filter(p => p <= totalPages).some(hasLinkedPage);
     linkedIndicator.classList.toggle('visible', linked);
 
-    resizeDrawingOverlay();
-    restoreOverlayForCurrentPair();
-
     lastRenderedPair = pairKey(currentPageStart);
     updatePageNavButtons();
   }
@@ -554,7 +581,6 @@
       name: suggestNoteName(linkedPages),
       linkedPdfPages: linkedPages,
       content: '',
-      drawings: {},
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -793,124 +819,6 @@
   }
 
   // ============================================================
-  // Toolbar ferramentas
-  // ============================================================
-  function updateToolButtons() {
-    toolBtns.forEach(b => b.classList.toggle('active', b.dataset.tool === activeTool));
-    drawingOverlay.style.pointerEvents = activeTool === TOOLS.SELECT ? 'none' : 'auto';
-    updateOverlayCursor();
-  }
-
-  function updateOverlayCursor() {
-    const cursorMap = {
-      [TOOLS.SELECT]: 'default',
-      [TOOLS.PEN]: 'crosshair',
-      [TOOLS.HIGHLIGHT]: 'crosshair',
-      [TOOLS.ERASER]: 'cell',
-    };
-    drawingOverlay.style.cursor = cursorMap[activeTool] || 'default';
-  }
-
-  toolBtns.forEach(btn => {
-    btn.addEventListener('click', () => {
-      activeTool = btn.dataset.tool;
-      updateToolButtons();
-    });
-  });
-  colorPicker.addEventListener('input', e => { toolColor = e.target.value; });
-
-  // ============================================================
-  // Desenho sobre o PDF (com persistência por par de páginas)
-  // ============================================================
-  function getOverlayPoint(e) {
-    const rect = drawingOverlay.getBoundingClientRect();
-    const scaleX = drawingOverlay.width / rect.width;
-    const scaleY = drawingOverlay.height / rect.height;
-    return {
-      x: (e.clientX - rect.left) * scaleX,
-      y: (e.clientY - rect.top) * scaleY,
-    };
-  }
-
-  function resizeDrawingOverlay() {
-    drawingOverlay.width = pdfCanvas.clientWidth;
-    drawingOverlay.height = pdfCanvas.clientHeight;
-  }
-
-  function clearOverlay() {
-    overlayCtx.clearRect(0, 0, drawingOverlay.width, drawingOverlay.height);
-  }
-
-  function getCurrentPage() {
-    return currentNoteIndex >= 0 ? notebookPages[currentNoteIndex] : null;
-  }
-
-  function saveOverlayForCurrentPair() {
-    const page = getCurrentPage();
-    if (!page) return;
-    if (!drawingOverlay.width || !drawingOverlay.height) return;
-    if (activeTool === TOOLS.SELECT) return;
-    const dataURL = drawingOverlay.toDataURL();
-    if (!page.drawings) page.drawings = {};
-    page.drawings[pairKey(currentPageStart)] = dataURL;
-    page.updatedAt = new Date().toISOString();
-    scheduleSave();
-  }
-
-  function restoreOverlayForCurrentPair() {
-    clearOverlay();
-    const page = getCurrentPage();
-    if (!page || !page.drawings) return;
-    const dataURL = page.drawings[pairKey(currentPageStart)];
-    if (!dataURL) return;
-    const img = new Image();
-    img.onload = () => {
-      overlayCtx.drawImage(img, 0, 0, drawingOverlay.width, drawingOverlay.height);
-    };
-    img.src = dataURL;
-  }
-
-  drawingOverlay.addEventListener('pointerdown', e => {
-    if (activeTool === TOOLS.SELECT) return;
-    isDrawing = true;
-    lastPoint = getOverlayPoint(e);
-    drawingOverlay.setPointerCapture(e.pointerId);
-  });
-
-  drawingOverlay.addEventListener('pointermove', e => {
-    if (!isDrawing || activeTool === TOOLS.SELECT) return;
-    const point = getOverlayPoint(e);
-    overlayCtx.lineCap = 'round';
-    overlayCtx.lineJoin = 'round';
-    if (activeTool === TOOLS.ERASER) {
-      overlayCtx.globalCompositeOperation = 'destination-out';
-      overlayCtx.lineWidth = OVERLAY_ERASER_WIDTH;
-    } else {
-      overlayCtx.globalCompositeOperation = 'source-over';
-      overlayCtx.strokeStyle = activeTool === TOOLS.HIGHLIGHT
-        ? toolColor + OVERLAY_HIGHLIGHT_ALPHA
-        : toolColor;
-      overlayCtx.lineWidth = activeTool === TOOLS.HIGHLIGHT
-        ? OVERLAY_HIGHLIGHT_WIDTH
-        : OVERLAY_PEN_WIDTH;
-    }
-    overlayCtx.beginPath();
-    overlayCtx.moveTo(lastPoint.x, lastPoint.y);
-    overlayCtx.lineTo(point.x, point.y);
-    overlayCtx.stroke();
-    lastPoint = point;
-  });
-
-  const stopDrawing = () => {
-    if (!isDrawing) return;
-    isDrawing = false;
-    lastPoint = null;
-    saveOverlayForCurrentPair();
-  };
-  drawingOverlay.addEventListener('pointerup', stopDrawing);
-  drawingOverlay.addEventListener('pointerleave', stopDrawing);
-
-  // ============================================================
   // Exportação
   // ============================================================
   function download(filename, content, type) {
@@ -1038,60 +946,7 @@
       exportAsMarkdown();
       return;
     }
-    if (!ctrl && !alt && !shift && key === 'v') {
-      activeTool = TOOLS.SELECT;
-      updateToolButtons();
-      return;
-    }
-    if (!ctrl && !alt && !shift && key === 'h') {
-      activeTool = TOOLS.HIGHLIGHT;
-      updateToolButtons();
-      return;
-    }
-    if (!ctrl && !alt && shift && key === 'p') {
-      e.preventDefault();
-      activeTool = TOOLS.PEN;
-      updateToolButtons();
-      return;
-    }
-    if (!ctrl && !alt && !shift && key === 'x') {
-      activeTool = TOOLS.ERASER;
-      updateToolButtons();
-      return;
-    }
   });
-
-  // ============================================================
-  // Restauração de sessão
-  // ============================================================
-  function askRestore(session) {
-    restoreBanner.classList.remove('hidden');
-    const onYes = () => {
-      notebookPages = session.notebookPages || [];
-      currentNoteIndex = session.lastNotebookIndex || 0;
-      currentPageStart = (session.lastPdfPages && session.lastPdfPages[0]) || 1;
-      restoreBanner.classList.add('hidden');
-      if (pdfDocument) {
-        renderPages();
-        renderNotebook();
-        initMilkdown().catch(err => {
-          console.error('[PDFNotes] Falha ao inicializar Milkdown:', err);
-        });
-      }
-      cleanup();
-    };
-    const onNo = () => {
-      clearSession();
-      restoreBanner.classList.add('hidden');
-      cleanup();
-    };
-    const cleanup = () => {
-      restoreYes.removeEventListener('click', onYes);
-      restoreNo.removeEventListener('click', onNo);
-    };
-    restoreYes.addEventListener('click', onYes);
-    restoreNo.addEventListener('click', onNo);
-  }
 
   // ============================================================
   // Inicialização
@@ -1099,17 +954,72 @@
   uploadScreen.classList.remove('hidden');
   workspaceScreen.classList.add('hidden');
 
-  const saved = loadSession();
-  if (saved && saved.notebookPages && saved.notebookPages.length) {
-    askRestore(saved);
+  // Restauração automática: carrega sessão + PDF do IndexedDB
+  async function autoRestore() {
+    const session = loadSession();
+    if (!session || !session.notebookPages || !session.notebookPages.length) return;
+
+    // Tenta carregar o PDF do IndexedDB
+    let savedPdf = null;
+    try {
+      savedPdf = await loadPdfFromDB();
+    } catch (err) {
+      console.error('[PDFNotes] Erro ao carregar PDF do DB:', err);
+    }
+
+    if (savedPdf) {
+      // Restaura notebookPages + PDF + posição
+      notebookPages = session.notebookPages || [];
+      currentNoteIndex = normalizeNoteIndex(session.lastNotebookIndex || 0);
+      currentPageStart = (session.lastPdfPages && session.lastPdfPages[0]) || 1;
+
+      // Abre o PDF diretamente sem passar pelo upload screen
+      uploadScreen.classList.add('hidden');
+      workspaceScreen.classList.remove('hidden');
+      pdfLoading.classList.remove('hidden');
+      pdfContainer.classList.add('hidden');
+
+      try {
+        const arrayBuffer = await savedPdf.arrayBuffer();
+        pdfDocument = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+        totalPages = pdfDocument.numPages;
+        pdfTotalPages.textContent = totalPages;
+        pdfFile = { name: session.fileName || 'documento.pdf' };
+        fileNameEl.textContent = pdfFile.name;
+
+        await renderPages();
+        pdfLoading.classList.add('hidden');
+        pdfContainer.classList.remove('hidden');
+
+        if (currentNoteIndex >= 0) renderNotebook();
+        initMilkdown().catch(err => {
+          console.error('[PDFNotes] Falha ao inicializar Milkdown:', err);
+        });
+      } catch (err) {
+        console.error('[PDFNotes] Erro ao restaurar PDF:', err);
+        uploadScreen.classList.remove('hidden');
+        workspaceScreen.classList.add('hidden');
+      }
+    } else {
+      // Sem PDF salvo, mas há notebookPages — mostra workspace com notas
+      notebookPages = session.notebookPages || [];
+      currentNoteIndex = normalizeNoteIndex(session.lastNotebookIndex || 0);
+      uploadScreen.classList.add('hidden');
+      workspaceScreen.classList.remove('hidden');
+      if (currentNoteIndex >= 0) renderNotebook();
+      initMilkdown().catch(err => {
+        console.error('[PDFNotes] Falha ao inicializar Milkdown:', err);
+      });
+    }
   }
+
+  autoRestore();
 
   const debouncedRender = debounce(() => {
     if (pdfDocument) renderPages();
   }, DEBOUNCE_RENDER_MS);
 
   window.addEventListener('resize', () => {
-    resizeDrawingOverlay();
     debouncedRender();
   });
 

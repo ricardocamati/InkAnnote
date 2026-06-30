@@ -34,6 +34,7 @@
   let renderTimeout = null;
   let renderToken = 0;
   let lastRenderedPair = null;
+  let pdfOrientation = 'landscape';
   let milkdownEditor = null;
   let milkdownReady = false;
   let getMarkdownFn = null;
@@ -445,6 +446,12 @@
       const arrayBuffer = await file.arrayBuffer();
       pdfDocument = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
       totalPages = pdfDocument.numPages;
+
+      // Detecta orientação baseada na primeira página
+      const firstPage = await pdfDocument.getPage(1);
+      const firstVp = firstPage.getViewport({ scale: 1 });
+      pdfOrientation = firstVp.height > firstVp.width ? 'portrait' : 'landscape';
+
       pdfTotalPages.textContent = totalPages;
       currentPageStart = 1;
       lastRenderedPair = null;
@@ -527,39 +534,85 @@
     const containerW = pdfContainer.clientWidth;
     if (!containerH || !containerW) return;
 
-    const rows = ocR ? 2 : 1;
+    const isPortrait = pdfOrientation === 'portrait';
     const offScale = CROP_OFFSCREEN_SCALE;
-    const scaleH = (containerH / rows) / (cropH / offScale);
-    const scaleW = containerW / (cropW / offScale);
-    const finalScale = Math.min(scaleH, scaleW) * CROP_MARGIN;
 
-    const dispW = Math.max(1, Math.floor((cropW / offScale) * finalScale));
-    const dispH = Math.max(1, Math.floor((cropH / offScale) * finalScale));
+    let finalScale, dispW, dispH, pdfW, pdfH, styleW, styleH;
 
-    const dpr = Math.min(window.devicePixelRatio || 1, MAX_DPR);
-    const quality = dpr * RENDER_QUALITY;
-    pdfCanvas.width = Math.floor(dispW * quality);
-    pdfCanvas.height = Math.floor(dispH * quality * rows);
-    pdfCanvas.style.width = dispW + 'px';
-    pdfCanvas.style.height = (dispH * rows) + 'px';
+    if (isPortrait && ocR) {
+      // Retrato: dois slides lado a lado na coluna de slides
+      const cols = 2;
+      const scaleH = containerH / (cropH / offScale);
+      const scaleW = (containerW / cols) / (cropW / offScale);
+      finalScale = Math.min(scaleH, scaleW) * CROP_MARGIN;
+      dispW = Math.max(1, Math.floor((cropW / offScale) * finalScale));
+      dispH = Math.max(1, Math.floor((cropH / offScale) * finalScale));
 
-    const ctx = pdfCanvas.getContext('2d');
-    ctx.clearRect(0, 0, pdfCanvas.width, pdfCanvas.height);
+      pdfW = dispW * cols;
+      pdfH = dispH;
+      styleW = pdfW;
+      styleH = dispH;
 
-    const destW = pdfCanvas.width;
-    const destH = Math.floor(dispH * quality);
+      pdfCanvas.width = Math.floor(pdfW * quality);
+      pdfCanvas.height = Math.floor(dispH * quality);
+      pdfCanvas.style.width = styleW + 'px';
+      pdfCanvas.style.height = styleH + 'px';
 
-    if (ocL) {
-      ctx.drawImage(ocL.canvas,
-        cropLeft, cropTop, cropW, cropH,
-        0, 0, destW, destH
-      );
-    }
-    if (ocR) {
-      ctx.drawImage(ocR.canvas,
-        cropLeft, cropTop, cropW, cropH,
-        0, destH, destW, destH
-      );
+      const ctx = pdfCanvas.getContext('2d');
+      ctx.clearRect(0, 0, pdfCanvas.width, pdfCanvas.height);
+
+      const destW = Math.floor(dispW * quality);
+      const destH = Math.floor(dispH * quality);
+
+      if (ocL) {
+        ctx.drawImage(ocL.canvas,
+          cropLeft, cropTop, cropW, cropH,
+          0, 0, destW, destH
+        );
+      }
+      if (ocR) {
+        ctx.drawImage(ocR.canvas,
+          cropLeft, cropTop, cropW, cropH,
+          destW, 0, destW, destH
+        );
+      }
+    } else {
+      // Paisagem (ou página única): empilhados verticalmente
+      const rows = ocR ? 2 : 1;
+      const scaleH = (containerH / rows) / (cropH / offScale);
+      const scaleW = containerW / (cropW / offScale);
+      finalScale = Math.min(scaleH, scaleW) * CROP_MARGIN;
+      dispW = Math.max(1, Math.floor((cropW / offScale) * finalScale));
+      dispH = Math.max(1, Math.floor((cropH / offScale) * finalScale));
+
+      pdfW = dispW;
+      pdfH = dispH * rows;
+      styleW = dispW;
+      styleH = dispH * rows;
+
+      pdfCanvas.width = Math.floor(dispW * quality);
+      pdfCanvas.height = Math.floor(dispH * quality * rows);
+      pdfCanvas.style.width = styleW + 'px';
+      pdfCanvas.style.height = styleH + 'px';
+
+      const ctx = pdfCanvas.getContext('2d');
+      ctx.clearRect(0, 0, pdfCanvas.width, pdfCanvas.height);
+
+      const destW = pdfCanvas.width;
+      const destH = Math.floor(dispH * quality);
+
+      if (ocL) {
+        ctx.drawImage(ocL.canvas,
+          cropLeft, cropTop, cropW, cropH,
+          0, 0, destW, destH
+        );
+      }
+      if (ocR) {
+        ctx.drawImage(ocR.canvas,
+          cropLeft, cropTop, cropW, cropH,
+          0, destH, destW, destH
+        );
+      }
     }
 
     if (token !== renderToken) return;

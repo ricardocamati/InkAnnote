@@ -6,6 +6,7 @@ const H = 210;
 const MARGIN_X = 10;
 const MARGIN_Y = 10;
 const GAP_COLS = 8;
+const SLIDE_GAP_X = 6;
 
 const COL_SLIDES_W = (W - MARGIN_X * 2 - GAP_COLS) * 0.45;
 const COL_NOTES_W = (W - MARGIN_X * 2 - GAP_COLS) * 0.55;
@@ -20,6 +21,11 @@ export async function exportPdfWithNotes(session, { includeAllSlides } = {}) {
   const jsPDF = await getJsPDF();
   const doc = new jsPDF('l', 'mm', 'a4');
   const title = (fileName || 'anotacoes').replace(/\.pdf$/i, '');
+
+  // Detecta orientação baseada na primeira página
+  const firstPage = await pdfDocument.getPage(1);
+  const firstVp = firstPage.getViewport({ scale: 1 });
+  const pdfIsPortrait = firstVp.height > firstVp.width;
 
   // 1. Gera pares de páginas (esquerda/direita), igual ao app principal
   let pagePairs;
@@ -65,7 +71,7 @@ export async function exportPdfWithNotes(session, { includeAllSlides } = {}) {
   const maxSlideH = (USABLE_H - slideGapY) / 2;
 
   async function drawSlide(pageNum, x, y, maxW, maxH) {
-    if (!pageNum) return 0;
+    if (!pageNum || pageNum > pdfDocument.numPages) return { w: 0, h: 0 };
     const { blob, width, height } = await renderPageToImageObject(pdfDocument, pageNum, 0.8);
     const arrayBuffer = await blobToArrayBuffer(blob);
     const uint8 = new Uint8Array(arrayBuffer);
@@ -78,9 +84,10 @@ export async function exportPdfWithNotes(session, { includeAllSlides } = {}) {
       drawW = drawH / ratio;
     }
     const offsetX = x + (maxW - drawW) / 2;
-    doc.addImage(uint8, 'JPEG', offsetX, y, drawW, drawH);
+    const offsetY = y + (maxH - drawH) / 2;
+    doc.addImage(uint8, 'JPEG', offsetX, offsetY, drawW, drawH);
     await new Promise(r => setTimeout(r, 0));
-    return drawH;
+    return { w: drawW, h: drawH };
   }
 
   // 3. Loop principal por par de páginas
@@ -98,9 +105,17 @@ export async function exportPdfWithNotes(session, { includeAllSlides } = {}) {
     const pairLabel = formatPageLink([leftNum, rightNum].filter(Boolean));
     drawPageChrome(pairLabel, pageCounter, totalPairs);
 
-    // Coluna de slides: dois empilhados
-    await drawSlide(leftNum, MARGIN_X, MARGIN_Y, COL_SLIDES_W, maxSlideH);
-    await drawSlide(rightNum, MARGIN_X, MARGIN_Y + maxSlideH + slideGapY, COL_SLIDES_W, maxSlideH);
+    if (pdfIsPortrait && rightNum) {
+      // Retrato: dois slides lado a lado dentro da coluna de slides
+      const halfGap = 4;
+      const halfW = (COL_SLIDES_W - halfGap) / 2;
+      await drawSlide(leftNum, MARGIN_X, MARGIN_Y, halfW, USABLE_H);
+      await drawSlide(rightNum, MARGIN_X + halfW + halfGap, MARGIN_Y, halfW, USABLE_H);
+    } else {
+      // Paisagem: dois slides empilhados
+      await drawSlide(leftNum, MARGIN_X, MARGIN_Y, COL_SLIDES_W, maxSlideH);
+      await drawSlide(rightNum, MARGIN_X, MARGIN_Y + maxSlideH + slideGapY, COL_SLIDES_W, maxSlideH);
+    }
 
     // 4. Coluna de anotações
     const linkedNotes = notebookPages.filter(note =>

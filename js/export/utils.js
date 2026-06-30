@@ -1,14 +1,28 @@
-export async function renderPageToDataURL(pdfDocument, pageNum, scale = 1.5) {
+export async function renderPageToImageObject(pdfDocument, pageNum, scale = 1.5) {
   const page = await pdfDocument.getPage(pageNum);
   const vp = page.getViewport({ scale });
   const oc = new OffscreenCanvas(Math.floor(vp.width), Math.floor(vp.height));
   const ctx = oc.getContext('2d');
   await page.render({ canvasContext: ctx, viewport: vp }).promise;
-  const blob = await oc.convertToBlob({ type: 'image/png' });
+  const blob = await oc.convertToBlob({ type: 'image/jpeg', quality: 0.85 });
+  return blob;
+}
+
+export async function renderPageToDataURL(pdfDocument, pageNum, scale = 1.5) {
+  const blob = await renderPageToImageObject(pdfDocument, pageNum, scale);
   return new Promise(resolve => {
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result);
     reader.readAsDataURL(blob);
+  });
+}
+
+export async function blobToArrayBuffer(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsArrayBuffer(blob);
   });
 }
 

@@ -1,4 +1,4 @@
-import { getJsPDF, renderPageToDataURL, slugify, formatPageLink, markdownToPlain } from './utils.js';
+import { getJsPDF, renderPageToImageObject, blobToArrayBuffer, slugify, formatPageLink, markdownToPlain } from './utils.js';
 
 const W = 210;
 const H = 297;
@@ -36,13 +36,16 @@ export async function exportPdfWithNotes(session, { includeAllSlides } = {}) {
 
     if (i > 0) doc.addPage();
 
-    const dataURL = await renderPageToDataURL(pdfDocument, pageNum, 0.8);
+    const blob = await renderPageToImageObject(pdfDocument, pageNum, 0.8);
+    const arrayBuffer = await blobToArrayBuffer(blob);
+    const uint8 = new Uint8Array(arrayBuffer);
+
     const tmpPage = await pdfDocument.getPage(pageNum);
     const tmpVp = tmpPage.getViewport({ scale: 1 });
     const ratio = tmpVp.height / tmpVp.width;
     const imgH = Math.min(imgW * ratio, maxImgH);
 
-    doc.addImage(dataURL, 'PNG', MARGIN_X, MARGIN_Y, imgW, imgH);
+    doc.addImage(uint8, 'JPEG', MARGIN_X, MARGIN_Y, imgW, imgH);
 
     const linkedNotes = notebookPages.filter(note =>
       (note.linkedPdfPages || []).some(p => p === pageNum)

@@ -304,7 +304,7 @@
     createNotePage(pages);
     const page = notebookPages[currentNoteIndex];
     if (name) page.name = name;
-    page.content = md || '';
+    page.content = (md || '').replace(/\\n/g, '\n');
     renderNotebook();
     saveSession();
     return page;
@@ -639,6 +639,9 @@
     }
     pageLinkLabel.textContent = formatPageLink(page.linkedPdfPages);
     pageNameDisplay.textContent = page.name?.trim() || 'Sem título';
+    if (pageNameDisplay.textContent === 'Sem título') {
+      pageNameDisplay.textContent = suggestNoteName(page.linkedPdfPages);
+    }
     refreshNotesList();
     updateWordCount();
     setSaveStatus(`Salvo às ${formatDate()}`);
@@ -650,7 +653,7 @@
     }
     const page = {
       id: uuid(),
-      name: suggestNoteName(linkedPages),
+      name: '',
       linkedPdfPages: linkedPages,
       content: '',
       createdAt: new Date().toISOString(),

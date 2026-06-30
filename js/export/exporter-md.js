@@ -28,14 +28,6 @@ export async function exportMarkdown(session, { mode } = {}) {
       content = markdownToPlain(content, { keepUrls: true });
     }
 
-    if (mode === 'obsidian') {
-      const pages = page.linkedPdfPages || [];
-      for (const p of pages) {
-        md += `![[slide-pag-${p}.jpg]]\n`;
-      }
-      md += '\n';
-    }
-
     md += `${content}\n\n`;
     const created = page.createdAt ? new Date(page.createdAt) : null;
     md += `_Criada em: ${created ? created.toLocaleString('pt-BR') : '—'}_\n\n`;

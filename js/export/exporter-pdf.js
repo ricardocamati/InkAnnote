@@ -56,9 +56,8 @@ export async function exportPdfWithNotes(session, { includeAllSlides } = {}) {
 
     const dateStr = new Date().toLocaleDateString('pt-BR');
     doc.text(`Exportado em ${dateStr}`, MARGIN_X, FOOTER_Y);
-    if (totalPages) {
-      doc.text(`${pageIndex} / ${totalPages}`, W - MARGIN_X, FOOTER_Y, { align: 'right' });
-    }
+    const counterText = totalPages ? `${pageIndex} / ${totalPages}` : `${pageIndex}`;
+    doc.text(counterText, W - MARGIN_X, FOOTER_Y, { align: 'right' });
     doc.setTextColor(0);
   }
 
@@ -67,12 +66,10 @@ export async function exportPdfWithNotes(session, { includeAllSlides } = {}) {
 
   async function drawSlide(pageNum, x, y, maxW, maxH) {
     if (!pageNum) return 0;
-    const blob = await renderPageToImageObject(pdfDocument, pageNum, 0.8);
+    const { blob, width, height } = await renderPageToImageObject(pdfDocument, pageNum, 0.8);
     const arrayBuffer = await blobToArrayBuffer(blob);
     const uint8 = new Uint8Array(arrayBuffer);
-    const tmpPage = await pdfDocument.getPage(pageNum);
-    const tmpVp = tmpPage.getViewport({ scale: 1 });
-    const ratio = tmpVp.height / tmpVp.width;
+    const ratio = height / width;
 
     let drawW = maxW;
     let drawH = drawW * ratio;

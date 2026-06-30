@@ -12,7 +12,6 @@ export async function exportTo(type, session) {
 
   switch (type) {
     case 'md-notion':   return exportMarkdown(session, { mode: 'notion' });
-    case 'md-obsidian': return exportMarkdown(session, { mode: 'obsidian' });
     case 'md-plain':    return exportMarkdown(session, { mode: 'plain' });
     case 'obsidian-zip': return exportObsidianVault(session);
     case 'pdf-notes':   return exportPdfWithNotes(session, { includeAllSlides: false });

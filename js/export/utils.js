@@ -5,11 +5,11 @@ export async function renderPageToImageObject(pdfDocument, pageNum, scale = 1.5)
   const ctx = oc.getContext('2d');
   await page.render({ canvasContext: ctx, viewport: vp }).promise;
   const blob = await oc.convertToBlob({ type: 'image/jpeg', quality: 0.85 });
-  return blob;
+  return { blob, width: vp.width, height: vp.height };
 }
 
 export async function renderPageToDataURL(pdfDocument, pageNum, scale = 1.5) {
-  const blob = await renderPageToImageObject(pdfDocument, pageNum, scale);
+  const { blob } = await renderPageToImageObject(pdfDocument, pageNum, scale);
   return new Promise(resolve => {
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result);

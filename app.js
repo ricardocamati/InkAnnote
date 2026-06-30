@@ -327,6 +327,11 @@
       showError('Por favor, envie um arquivo PDF válido.');
       return;
     }
+
+    if (pdfDocument && notebookPages.length > 0) {
+      if (!confirm('Trocar PDF irá apagar as anotações atuais. Continuar?')) return;
+    }
+
     uploadError.classList.add('hidden');
     pdfFile = file;
     fileNameEl.textContent = file.name;
@@ -362,6 +367,13 @@
     pdfLoading.classList.remove('hidden');
     pdfContainer.classList.add('hidden');
 
+    if (pdfDocument && notebookPages.length > 0) {
+      notebookPages = [];
+      currentNoteIndex = -1;
+      clearSession();
+      clearPdfDB().catch(() => {});
+    }
+
     try {
       const arrayBuffer = await file.arrayBuffer();
       pdfDocument = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
@@ -373,7 +385,6 @@
       pdfLoading.classList.add('hidden');
       pdfContainer.classList.remove('hidden');
 
-      // Salva o PDF no IndexedDB e a sessão no localStorage
       savePdfToDB(file).catch(err => console.error('[PDFNotes] Erro ao salvar PDF no DB:', err));
 
       maybeCreateDefaultPage();
